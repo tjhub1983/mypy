@@ -186,7 +186,6 @@ def _type_operator(cls: type[T]) -> type[T]: ...
 
 # --- Data Types (used in type computations) ---
 
-@_type_operator
 class Member(Generic[_Name, _Type, _Quals, _Init, _Definer]):
     """
     Represents a class member with name, type, qualifiers, initializer, and definer.
@@ -196,9 +195,13 @@ class Member(Generic[_Name, _Type, _Quals, _Init, _Definer]):
     - _Init: the literal type of the initializer expression
     - _Definer: the class that defined this member
     """
-    ...
+    name: _Name
+    typ: _Type
+    quals: _Quals
+    init: _Init
+    definer: _Definer
 
-@_type_operator
+
 class Param(Generic[_Name, _Type, _Quals]):
     """
     Represents a function parameter for extended callable syntax.
@@ -206,7 +209,9 @@ class Param(Generic[_Name, _Type, _Quals]):
     - _Type: the parameter's type
     - _Quals: Literal['positional', 'keyword', 'default', '*', '**'] - qualifiers
     """
-    ...
+    name: _Name
+    typ: _Type
+    quals: _Quals
 
 # Convenience aliases for Param
 type PosParam[N, T] = Param[N, T, Literal["positional"]]
@@ -269,30 +274,11 @@ class FromUnion(Generic[_T]):
 
 # --- Member/Param Accessors (sugar for GetArg) ---
 
-@_type_operator
-class GetName(Generic[_T]):
-    """Get the name from a Member or Param. Equivalent to GetArg[_T, Member, 0]."""
-    ...
-
-@_type_operator
-class GetType(Generic[_T]):
-    """Get the type from a Member or Param. Equivalent to GetArg[_T, Member, 1]."""
-    ...
-
-@_type_operator
-class GetQuals(Generic[_T]):
-    """Get the qualifiers from a Member or Param. Equivalent to GetArg[_T, Member, 2]."""
-    ...
-
-@_type_operator
-class GetInit(Generic[_T]):
-    """Get the initializer type from a Member. Equivalent to GetArg[_T, Member, 3]."""
-    ...
-
-@_type_operator
-class GetDefiner(Generic[_T]):
-    """Get the defining class from a Member. Equivalent to GetArg[_T, Member, 4]."""
-    ...
+type GetName[T: Member | Param] = GetAttr[T, Literal["name"]]
+type GetType[T: Member | Param] = GetAttr[T, Literal["typ"]]
+type GetQuals[T: Member | Param] = GetAttr[T, Literal["quals"]]
+type GetInit[T: Member] = GetAttr[T, Literal["init"]]
+type GetDefiner[T: Member] = GetAttr[T, Literal["definer"]]
 
 # --- Type Construction Operators ---
 
@@ -726,18 +712,18 @@ class TypeLevelEvaluator:
             return typ.value
         return None
 
-    def make_member_type(
+    def make_member_instance(
         self,
         name: str,
         member_type: Type,
         quals: Type,
         init: Type,
         definer: Type,
-    ) -> TypeOperatorType:
-        """Create a Member[...] type operator."""
-        member_info = self.api.lookup_qualified('typing.Member', ...)
-        return TypeOperatorType(
-            member_info.node,  # TypeInfo for Member
+    ) -> Instance:
+        """Create a Member[...] instance type (Member is a regular generic class)."""
+        member_info = self.api.lookup_qualified('typing.Member', ...).node
+        return Instance(
+            member_info,
             [
                 LiteralType(name, self.api.named_type('builtins.str')),
                 member_type,
@@ -747,7 +733,7 @@ class TypeLevelEvaluator:
             ],
         )
 
-    def create_protocol_from_members(self, members: list[TypeOperatorType]) -> Type:
+    def create_protocol_from_members(self, members: list[Instance]) -> Type:
         """Create a new Protocol TypeInfo from Member type operators."""
         # Extract member info and create synthetic TypeInfo
         # This is complex - see Phase 4 for details
@@ -775,17 +761,11 @@ def eval_get_arg(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
         return typ  # Can't evaluate without literal index
 
     if isinstance(target, Instance) and isinstance(base, Instance):
+        # This works for both regular classes and Member/Param (which are now Instances)
         args = evaluator.get_type_args_for_base(target, base.type)
         if args is not None and 0 <= index < len(args):
             return args[index]
         return UninhabitedType()  # Never
-
-    # Handle TypeOperatorType targets (e.g., GetArg[Member[...], Member, 1])
-    if isinstance(target, TypeOperatorType) and isinstance(base, Instance):
-        if target.type == base.type:
-            if 0 <= index < len(target.args):
-                return target.args[index]
-        return UninhabitedType()
 
     return typ
 
@@ -813,7 +793,7 @@ def eval_get_args(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
 
 @register_operator('typing.Members')
 def eval_members(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
-    """Evaluate Members[T] -> tuple of Member types"""
+    """Evaluate Members[T] -> tuple of Member instance types"""
     if len(typ.args) != 1:
         return typ
 
@@ -824,7 +804,7 @@ def eval_members(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
         members = []
         for name, node in target.type.names.items():
             if node.type is not None:
-                member = evaluator.make_member_type(
+                member = evaluator.make_member_instance(
                     name=name,
                     member_type=node.type,
                     quals=extract_member_quals(node),
@@ -839,7 +819,7 @@ def eval_members(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
 
 @register_operator('typing.Attrs')
 def eval_attrs(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
-    """Evaluate Attrs[T] -> tuple of Member types (annotated attrs only)"""
+    """Evaluate Attrs[T] -> tuple of Member instance types (annotated attrs only)"""
     if len(typ.args) != 1:
         return typ
 
@@ -853,7 +833,7 @@ def eval_attrs(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
             if (node.type is not None and
                 not node.is_classvar and
                 not isinstance(node.type, CallableType)):
-                member = evaluator.make_member_type(
+                member = evaluator.make_member_instance(
                     name=name,
                     member_type=node.type,
                     quals=extract_member_quals(node),
@@ -906,71 +886,18 @@ def eval_get_attr(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     return typ
 
 
-# --- Member/Param Accessors (sugar for GetArg) ---
-
-@register_operator('typing.GetName')
-def eval_get_name(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
-    """GetName[M] = GetArg[M, Member, 0] or GetArg[M, Param, 0]"""
-    if len(typ.args) != 1:
-        return typ
-
-    target = evaluator.evaluate(typ.args[0])
-    if isinstance(target, TypeOperatorType):
-        if target.fullname in ('typing.Member', 'typing.Param') and len(target.args) > 0:
-            return target.args[0]
-    return UninhabitedType()
-
-
-@register_operator('typing.GetType')
-def eval_get_type(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
-    """GetType[M] = GetArg[M, Member, 1] or GetArg[M, Param, 1]"""
-    if len(typ.args) != 1:
-        return typ
-
-    target = evaluator.evaluate(typ.args[0])
-    if isinstance(target, TypeOperatorType):
-        if target.fullname in ('typing.Member', 'typing.Param') and len(target.args) > 1:
-            return target.args[1]
-    return UninhabitedType()
-
-
-@register_operator('typing.GetQuals')
-def eval_get_quals(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
-    """GetQuals[M] = GetArg[M, Member, 2] or GetArg[M, Param, 2]"""
-    if len(typ.args) != 1:
-        return typ
-
-    target = evaluator.evaluate(typ.args[0])
-    if isinstance(target, TypeOperatorType):
-        if target.fullname in ('typing.Member', 'typing.Param') and len(target.args) > 2:
-            return target.args[2]
-    return UninhabitedType()
-
-
-@register_operator('typing.GetInit')
-def eval_get_init(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
-    """GetInit[M] = GetArg[M, Member, 3]"""
-    if len(typ.args) != 1:
-        return typ
-
-    target = evaluator.evaluate(typ.args[0])
-    if isinstance(target, TypeOperatorType):
-        if target.fullname == 'typing.Member' and len(target.args) > 3:
-            return target.args[3]
-    return UninhabitedType()
-
-
-@register_operator('typing.GetDefiner')
-def eval_get_definer(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
-    """GetDefiner[M] = GetArg[M, Member, 4]"""
-    if len(typ.args) != 1:
-        return typ
-
-    target = evaluator.evaluate(typ.args[0])
-    if isinstance(target, TypeOperatorType):
-        if target.fullname == 'typing.Member' and len(target.args) > 4:
-            return target.args[4]
-    return UninhabitedType()
+# --- Member/Param Accessors ---
+# NOTE: GetName, GetType, GetQuals, GetInit, GetDefiner are now type aliases
+# defined in typeshed using GetAttr, not type operators:
+#
+#   type GetName[T: Member | Param] = GetAttr[T, Literal["name"]]
+#   type GetType[T: Member | Param] = GetAttr[T, Literal["typ"]]
+#   type GetQuals[T: Member | Param] = GetAttr[T, Literal["quals"]]
+#   type GetInit[T: Member] = GetAttr[T, Literal["init"]]
+#   type GetDefiner[T: Member] = GetAttr[T, Literal["definer"]]
+#
+# Since Member and Param are regular generic classes with attributes,
+# GetAttr handles these automatically - no special operator needed.
 
 
 # --- String Operations ---
@@ -1063,9 +990,11 @@ def eval_new_protocol(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> T
     """Evaluate NewProtocol[*Members] -> create a new structural type"""
     evaluated_members = [evaluator.evaluate(m) for m in typ.args]
 
-    # All members must be Member type operators
+    # All members must be Member instances (Member is a regular generic class)
+    member_type_info = evaluator.api.lookup_qualified('typing.Member', ...).node
     for m in evaluated_members:
-        if not isinstance(m, TypeOperatorType) or m.fullname != 'typing.Member':
+        m = get_proper_type(m)
+        if not isinstance(m, Instance) or m.type != member_type_info:
             return typ  # Can't evaluate yet
 
     return evaluator.create_protocol_from_members(evaluated_members)
@@ -1076,13 +1005,16 @@ def eval_new_typed_dict(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) ->
     """Evaluate NewTypedDict[*Members] -> create a new TypedDict"""
     evaluated_members = [evaluator.evaluate(m) for m in typ.args]
 
+    member_type_info = evaluator.api.lookup_qualified('typing.Member', ...).node
     items = {}
     required_keys = set()
 
     for m in evaluated_members:
-        if not isinstance(m, TypeOperatorType) or m.fullname != 'typing.Member':
+        m = get_proper_type(m)
+        if not isinstance(m, Instance) or m.type != member_type_info:
             return typ  # Can't evaluate yet
 
+        # Member[name, typ, quals, init, definer] - access via type args
         name = evaluator.extract_literal_string(m.args[0])
         if name is None:
             return typ
@@ -1462,7 +1394,10 @@ Port examples from the PEP:
 **Decision**: Use a single `TypeOperatorType` class that references a TypeInfo (the operator) and contains args, rather than creating separate classes for each operator (GetArgType, MembersType, etc.). This keeps mypy's core minimal and allows new operators to be added in typeshed without modifying mypy.
 
 ### 2. Type Operators Declared in Typeshed
-**Decision**: All type operators (`GetArg`, `Members`, `Member`, `Param`, etc.) are declared as generic classes in `mypy/typeshed/stdlib/typing.pyi` with the `@_type_operator` decorator. This makes them first-class citizens that can be imported and used like any other typing construct.
+**Decision**: Type operators (`GetArg`, `Members`, `GetAttr`, etc.) are declared as generic classes in `mypy/typeshed/stdlib/typing.pyi` with the `@_type_operator` decorator. `Member` and `Param` are regular generic classes (not operators) with actual attributes - they're just data containers used in type computations.
+
+### 2b. Member/Param Accessors as Type Aliases
+**Decision**: `GetName`, `GetType`, `GetQuals`, `GetInit`, `GetDefiner` are type aliases using `GetAttr`, not separate type operators. Since `Member` and `Param` are regular classes with attributes, `GetAttr[Member[...], Literal["name"]]` works directly.
 
 ### 3. TypeOperatorType is NOT a ProperType
 **Decision**: Like `TypeAliasType`, `TypeOperatorType` must be expanded before use in most type operations. This is handled by extending `get_proper_type()` to evaluate type operators.
@@ -1504,7 +1439,7 @@ Port examples from the PEP:
 - `mypy/checkexpr.py` - kwargs TypedDict inference
 - `mypy/semanal.py` - Detect `@_type_operator` decorator, InitField handling
 - `mypy/nodes.py` - Add `is_type_operator` flag to `TypeInfo`
-- `mypy/typeshed/stdlib/typing.pyi` - Declare all type operators with `@_type_operator`
+- `mypy/typeshed/stdlib/typing.pyi` - Declare type operators with `@_type_operator`, plus `Member`/`Param` as regular generic classes and accessor aliases
 
 ---
 
