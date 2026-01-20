@@ -6,8 +6,8 @@ This document outlines a plan for implementing the type-level computation propos
 
 The proposal introduces TypeScript-inspired type-level introspection and construction facilities:
 
-1. **Type Operators**: `GetArg`, `GetArgs`, `FromUnion`, `Sub` (subtype check)
-2. **Conditional Types**: `X if Sub[T, Base] else Y`
+1. **Type Operators**: `GetArg`, `GetArgs`, `FromUnion`, `IsSub` (subtype check)
+2. **Conditional Types**: `X if IsSub[T, Base] else Y`
 3. **Type-Level Iteration**: `*[... for t in Iter[...]]`
 4. **Object Inspection**: `Members`, `Attrs`, `Member`, `NewProtocol`, `NewTypedDict`
 5. **Callable Extension**: `Param` type with qualifiers for extended callable syntax
@@ -43,7 +43,7 @@ class ComputedType(Type):
 
     Subclasses:
     - TypeOperatorType: e.g., GetArg[T, Base, 0], Members[T]
-    - ConditionalType: e.g., X if Sub[T, Base] else Y
+    - ConditionalType: e.g., X if IsSub[T, Base] else Y
     - TypeForComprehension: e.g., *[Expr for x in Iter[T] if Cond]
     """
 
@@ -121,16 +121,16 @@ class TypeOperatorType(ComputedType):
 ```python
 class ConditionalType(ComputedType):
     """
-    Represents `TrueType if Sub[T, Base] else FalseType`.
+    Represents `TrueType if IsSub[T, Base] else FalseType`.
 
-    The condition is itself a TypeOperatorType (Sub[...]).
+    The condition is itself a TypeOperatorType (IsSub[...]).
     """
 
     __slots__ = ("condition", "true_type", "false_type")
 
     def __init__(
         self,
-        condition: Type,  # Should be Sub[T, Base] or boolean combination thereof
+        condition: Type,  # Should be IsSub[T, Base] or boolean combination thereof
         true_type: Type,
         false_type: Type,
         line: int = -1,
@@ -164,7 +164,7 @@ class TypeForComprehension(ComputedType):
         element_expr: Type,
         iter_var: str,
         iter_type: Type,  # The type being iterated (should be a tuple type)
-        conditions: list[Type],  # Each should be Sub[...] or boolean combo
+        conditions: list[Type],  # Each should be IsSub[...] or boolean combo
         line: int = -1,
         column: int = -1,
     ) -> None:
@@ -323,10 +323,10 @@ class NewTypedDict(Generic[Unpack[_Ts]]):
 # --- Boolean/Conditional Operators ---
 
 @_type_operator
-class Sub(Generic[_T, _Base]):
+class IsSub(Generic[_T, _Base]):
     """
     Type-level subtype check. Evaluates to a type-level boolean.
-    Used in conditional type expressions: `X if Sub[T, Base] else Y`
+    Used in conditional type expressions: `X if IsSub[T, Base] else Y`
     """
     ...
 
@@ -492,7 +492,7 @@ def analyze_type_operator(self, t: UnboundType, type_info: TypeInfo) -> Type:
 
 ### 2.2 Parse Conditional Type Syntax
 
-Handle the `X if Sub[T, Base] else Y` syntax in type contexts by extending the parser.
+Handle the `X if IsSub[T, Base] else Y` syntax in type contexts by extending the parser.
 
 #### 2.2.1 AST Representation
 
@@ -545,10 +545,10 @@ def visit_conditional_type(self, t: ConditionalType) -> Type:
     true_type = self.anal_type(t.true_type)
     false_type = self.anal_type(t.false_type)
 
-    # Validate condition is a Sub[...] or boolean combination
+    # Validate condition is a IsSub[...] or boolean combination
     if not self.is_valid_type_condition(condition):
         self.fail(
-            "Condition in type-level conditional must be Sub[T, Base] "
+            "Condition in type-level conditional must be IsSub[T, Base] "
             "or a boolean combination thereof",
             t
         )
@@ -558,9 +558,9 @@ def visit_conditional_type(self, t: ConditionalType) -> Type:
 
 
 def is_valid_type_condition(self, typ: Type) -> bool:
-    """Check if typ is a valid type-level condition (Sub or boolean combo)."""
+    """Check if typ is a valid type-level condition (IsSub or boolean combo)."""
     if isinstance(typ, TypeOperatorType):
-        return typ.fullname == 'typing.Sub'
+        return typ.fullname == 'typing.IsSub'
     # Could also check for And/Or/Not combinations if we support those
     return False
 ```
@@ -661,10 +661,10 @@ class TypeLevelEvaluator:
 
     def eval_condition(self, cond: Type) -> bool | None:
         """
-        Evaluate a type-level condition (Sub[T, Base]).
+        Evaluate a type-level condition (IsSub[T, Base]).
         Returns True/False if decidable, None if undecidable.
         """
-        if isinstance(cond, TypeOperatorType) and cond.fullname == 'typing.Sub':
+        if isinstance(cond, TypeOperatorType) and cond.fullname == 'typing.IsSub':
             left = self.evaluate(cond.args[0])
             right = self.evaluate(cond.args[1])
             # Handle type variables - may be undecidable
@@ -1414,7 +1414,7 @@ Port examples from the PEP:
 
 ### Milestone 2: Conditional Types (Weeks 4-5)
 1. Add `ConditionalType` and condition classes
-2. Add `Sub` condition operator
+2. Add `IsSub` condition operator
 3. Integrate with type evaluator
 4. Tests for conditionals
 
