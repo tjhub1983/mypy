@@ -19,255 +19,469 @@ The proposal introduces TypeScript-inspired type-level introspection and constru
 
 ## Phase 1: Foundation Types and Infrastructure
 
-### 1.1 Add Core Type Classes (`mypy/types.py`)
+### 1.1 Core Design: Unified `TypeOperatorType` Class
 
-#### New Type Classes
+Rather than creating a separate class for each type operator, we use a single unified
+`TypeOperatorType` class modeled after `TypeAliasType` and `Instance`. This approach:
 
-```python
-class MemberType(ProperType):
-    """Represents Member[Name, Type, Quals, Init, Definer]"""
-    name: Type  # Literal string type
-    member_type: Type
-    quals: Type  # Literal union of qualifiers
-    init: Type  # Literal type of initializer
-    definer: Type  # The class that defined this member
+- Keeps mypy's type system minimal and extensible
+- Allows new operators to be added in typeshed without modifying mypy's core
+- Treats type operators as "unevaluated" types that expand to concrete types
 
-class ParamType(ProperType):
-    """Represents Param[Name, Type, Quals] for extended callables"""
-    name: Type  # Literal string or None
-    param_type: Type
-    quals: Type  # Literal union of param qualifiers
-
-class ConditionalType(ProperType):
-    """Represents `TrueType if Condition else FalseType`"""
-    condition: TypeCondition
-    true_type: Type
-    false_type: Type
-
-class TypeCondition:
-    """Base class for type-level boolean conditions"""
-    pass
-
-class SubtypeCondition(TypeCondition):
-    """Represents Sub[T, Base] - a subtype check"""
-    left: Type
-    right: Type
-
-class NotCondition(TypeCondition):
-    """Represents `not <condition>`"""
-    inner: TypeCondition
-
-class AndCondition(TypeCondition):
-    """Represents `cond1 and cond2`"""
-    left: TypeCondition
-    right: TypeCondition
-
-class OrCondition(TypeCondition):
-    """Represents `cond1 or cond2`"""
-    left: TypeCondition
-    right: TypeCondition
-
-class TypeForComprehension(ProperType):
-    """Represents *[Expr for var in Iter[T] if Cond]"""
-    element_expr: Type
-    iter_var: str
-    iter_type: Type  # The type being iterated
-    conditions: list[TypeCondition]
-
-class TypeOperatorType(ProperType):
-    """Base class for type operators like GetArg, GetAttr, etc."""
-    pass
-
-class GetArgType(TypeOperatorType):
-    """Represents GetArg[T, Base, Idx]"""
-    target: Type
-    base: Type
-    index: Type  # Literal int
-
-class GetArgsType(TypeOperatorType):
-    """Represents GetArgs[T, Base]"""
-    target: Type
-    base: Type
-
-class GetAttrType(TypeOperatorType):
-    """Represents GetAttr[T, AttrName]"""
-    target: Type
-    attr_name: Type  # Literal string
-
-class MembersType(TypeOperatorType):
-    """Represents Members[T]"""
-    target: Type
-
-class AttrsType(TypeOperatorType):
-    """Represents Attrs[T] - annotated attributes only"""
-    target: Type
-
-class FromUnionType(TypeOperatorType):
-    """Represents FromUnion[T]"""
-    target: Type
-
-class NewProtocolType(TypeOperatorType):
-    """Represents NewProtocol[*Members]"""
-    members: list[Type]
-
-class NewTypedDictType(TypeOperatorType):
-    """Represents NewTypedDict[*Members]"""
-    members: list[Type]
-
-class IterType(ProperType):
-    """Represents Iter[T] - marks a type for iteration"""
-    inner: Type
-```
-
-#### String Operation Types
+### 1.2 Add `TypeOperatorType` (`mypy/types.py`)
 
 ```python
-class SliceType(TypeOperatorType):
-    """Represents Slice[S, Start, End]"""
-    target: Type  # Literal string
-    start: Type   # Literal int or None
-    end: Type     # Literal int or None
+class TypeOperatorType(Type):
+    """
+    Represents an unevaluated type operator application, e.g., GetArg[T, Base, 0].
 
-class ConcatType(TypeOperatorType):
-    """Represents Concat[S1, S2]"""
-    left: Type
-    right: Type
+    Analogous to TypeAliasType: stores a reference to the operator's TypeInfo
+    and the type arguments. NOT a ProperType - must be expanded before use
+    in most type operations.
 
-class StringCaseType(TypeOperatorType):
-    """Base for Uppercase, Lowercase, Capitalize, Uncapitalize"""
-    target: Type
-    operation: str  # 'upper', 'lower', 'capitalize', 'uncapitalize'
+    Type operators are generic classes in typeshed marked with @_type_operator.
+    """
+
+    __slots__ = ("type", "args")
+
+    def __init__(
+        self,
+        type: TypeInfo,  # The TypeInfo for the operator (e.g., typing.GetArg)
+        args: list[Type],  # The type arguments
+        line: int = -1,
+        column: int = -1,
+    ) -> None:
+        super().__init__(line, column)
+        self.type = type
+        self.args = args
+
+    def accept(self, visitor: TypeVisitor[T]) -> T:
+        return visitor.visit_type_operator_type(self)
+
+    @property
+    def fullname(self) -> str:
+        return self.type.fullname
+
+    def expand(self) -> Type:
+        """
+        Evaluate this type operator to produce a concrete type.
+        Returns self if evaluation is not yet possible (e.g., contains unresolved type vars).
+        """
+        from mypy.typelevel import evaluate_type_operator
+        return evaluate_type_operator(self)
+
+    def serialize(self) -> JsonDict:
+        return {
+            ".class": "TypeOperatorType",
+            "type_ref": self.type.fullname,
+            "args": [a.serialize() for a in self.args],
+        }
+
+    @classmethod
+    def deserialize(cls, data: JsonDict) -> TypeOperatorType:
+        # Similar to TypeAliasType deserialization
+        ...
+
+    def copy_modified(self, *, args: list[Type] | None = None) -> TypeOperatorType:
+        return TypeOperatorType(
+            self.type,
+            args if args is not None else self.args.copy(),
+            self.line,
+            self.column,
+        )
 ```
 
-#### Annotated Operations
+### 1.3 Conditional Types and Comprehensions (`mypy/types.py`)
+
+These are special syntactic constructs that need their own type classes:
 
 ```python
-class GetAnnotationsType(TypeOperatorType):
-    """Represents GetAnnotations[T]"""
-    target: Type
+class ConditionalType(Type):
+    """
+    Represents `TrueType if Sub[T, Base] else FalseType`.
 
-class DropAnnotationsType(TypeOperatorType):
-    """Represents DropAnnotations[T]"""
-    target: Type
+    NOT a ProperType - must be evaluated/expanded before use.
+    The condition is itself a TypeOperatorType (Sub[...]).
+    """
+
+    __slots__ = ("condition", "true_type", "false_type")
+
+    def __init__(
+        self,
+        condition: Type,  # Should be Sub[T, Base] or boolean combination thereof
+        true_type: Type,
+        false_type: Type,
+        line: int = -1,
+        column: int = -1,
+    ) -> None:
+        super().__init__(line, column)
+        self.condition = condition
+        self.true_type = true_type
+        self.false_type = false_type
+
+    def accept(self, visitor: TypeVisitor[T]) -> T:
+        return visitor.visit_conditional_type(self)
+
+    def expand(self) -> Type:
+        """Evaluate the condition and return the appropriate branch."""
+        from mypy.typelevel import evaluate_conditional
+        return evaluate_conditional(self)
+
+
+class TypeForComprehension(Type):
+    """
+    Represents *[Expr for var in Iter[T] if Cond].
+
+    NOT a ProperType - expands to a tuple of types.
+    """
+
+    __slots__ = ("element_expr", "iter_var", "iter_type", "conditions")
+
+    def __init__(
+        self,
+        element_expr: Type,
+        iter_var: str,
+        iter_type: Type,  # The type being iterated (should be a tuple type)
+        conditions: list[Type],  # Each should be Sub[...] or boolean combo
+        line: int = -1,
+        column: int = -1,
+    ) -> None:
+        super().__init__(line, column)
+        self.element_expr = element_expr
+        self.iter_var = iter_var
+        self.iter_type = iter_type
+        self.conditions = conditions
+
+    def accept(self, visitor: TypeVisitor[T]) -> T:
+        return visitor.visit_type_for_comprehension(self)
+
+    def expand(self) -> Type:
+        """Evaluate the comprehension to produce a tuple type."""
+        from mypy.typelevel import evaluate_comprehension
+        return evaluate_comprehension(self)
 ```
 
-### 1.2 Update Type Visitor (`mypy/type_visitor.py`)
+### 1.4 Update Type Visitor (`mypy/type_visitor.py`)
 
-Add visitor methods for each new type:
+Add visitor methods for the new types:
 
 ```python
 class TypeVisitor(Generic[T]):
     # ... existing methods ...
 
-    def visit_member_type(self, t: MemberType) -> T: ...
-    def visit_param_type(self, t: ParamType) -> T: ...
+    def visit_type_operator_type(self, t: TypeOperatorType) -> T: ...
     def visit_conditional_type(self, t: ConditionalType) -> T: ...
     def visit_type_for_comprehension(self, t: TypeForComprehension) -> T: ...
-    def visit_get_arg_type(self, t: GetArgType) -> T: ...
-    def visit_get_args_type(self, t: GetArgsType) -> T: ...
-    def visit_get_attr_type(self, t: GetAttrType) -> T: ...
-    def visit_members_type(self, t: MembersType) -> T: ...
-    def visit_attrs_type(self, t: AttrsType) -> T: ...
-    def visit_from_union_type(self, t: FromUnionType) -> T: ...
-    def visit_new_protocol_type(self, t: NewProtocolType) -> T: ...
-    def visit_new_typed_dict_type(self, t: NewTypedDictType) -> T: ...
-    def visit_iter_type(self, t: IterType) -> T: ...
-    def visit_slice_type(self, t: SliceType) -> T: ...
-    def visit_concat_type(self, t: ConcatType) -> T: ...
-    def visit_string_case_type(self, t: StringCaseType) -> T: ...
-    def visit_get_annotations_type(self, t: GetAnnotationsType) -> T: ...
-    def visit_drop_annotations_type(self, t: DropAnnotationsType) -> T: ...
 ```
 
-### 1.3 Register Special Form Names (`mypy/types.py`)
+### 1.5 Declare Type Operators in Typeshed (`mypy/typeshed/stdlib/typing.pyi`)
 
-Add constants for the new special forms:
+All type operators are declared as generic classes with the `@_type_operator` decorator.
+This decorator marks them for special handling by the type checker.
 
 ```python
-TYPE_LEVEL_NAMES: Final = frozenset({
-    'typing.Member',
-    'typing.Param',
-    'typing.Sub',
-    'typing.GetArg',
-    'typing.GetArgs',
-    'typing.GetAttr',
-    'typing.GetName',
-    'typing.GetType',
-    'typing.GetQuals',
-    'typing.GetInit',
-    'typing.GetDefiner',
-    'typing.Members',
-    'typing.Attrs',
-    'typing.FromUnion',
-    'typing.NewProtocol',
-    'typing.NewTypedDict',
-    'typing.Iter',
-    'typing.Slice',
-    'typing.Concat',
-    'typing.Uppercase',
-    'typing.Lowercase',
-    'typing.Capitalize',
-    'typing.Uncapitalize',
-    'typing.GetAnnotations',
-    'typing.DropAnnotations',
-    'typing.Length',
-})
+# In typing.pyi
+
+def _type_operator(cls: type[T]) -> type[T]: ...
+
+# --- Data Types (used in type computations) ---
+
+@_type_operator
+class Member(Generic[_Name, _Type, _Quals, _Init, _Definer]):
+    """
+    Represents a class member with name, type, qualifiers, initializer, and definer.
+    - _Name: Literal[str] - the member name
+    - _Type: the member's type
+    - _Quals: Literal['ClassVar'] | Literal['Final'] | Never - qualifiers
+    - _Init: the literal type of the initializer expression
+    - _Definer: the class that defined this member
+    """
+    ...
+
+@_type_operator
+class Param(Generic[_Name, _Type, _Quals]):
+    """
+    Represents a function parameter for extended callable syntax.
+    - _Name: Literal[str] | None - the parameter name
+    - _Type: the parameter's type
+    - _Quals: Literal['positional', 'keyword', 'default', '*', '**'] - qualifiers
+    """
+    ...
+
+# Convenience aliases for Param
+type PosParam[N, T] = Param[N, T, Literal["positional"]]
+type PosDefaultParam[N, T] = Param[N, T, Literal["positional", "default"]]
+type DefaultParam[N, T] = Param[N, T, Literal["default"]]
+type NamedParam[N, T] = Param[N, T, Literal["keyword"]]
+type NamedDefaultParam[N, T] = Param[N, T, Literal["keyword", "default"]]
+type ArgsParam[T] = Param[None, T, Literal["*"]]
+type KwargsParam[T] = Param[None, T, Literal["**"]]
+
+# --- Type Introspection Operators ---
+
+@_type_operator
+class GetArg(Generic[_T, _Base, _Idx]):
+    """
+    Get type argument at index _Idx from _T when viewed as _Base.
+    Returns Never if _T does not inherit from _Base or index is out of bounds.
+    """
+    ...
+
+@_type_operator
+class GetArgs(Generic[_T, _Base]):
+    """
+    Get all type arguments from _T when viewed as _Base, as a tuple.
+    Returns Never if _T does not inherit from _Base.
+    """
+    ...
+
+@_type_operator
+class GetAttr(Generic[_T, _Name]):
+    """
+    Get the type of attribute _Name from type _T.
+    _Name must be a Literal[str].
+    """
+    ...
+
+@_type_operator
+class Members(Generic[_T]):
+    """
+    Get all members of type _T as a tuple of Member types.
+    Includes methods, class variables, and instance attributes.
+    """
+    ...
+
+@_type_operator
+class Attrs(Generic[_T]):
+    """
+    Get annotated instance attributes of _T as a tuple of Member types.
+    Excludes methods and ClassVar members.
+    """
+    ...
+
+@_type_operator
+class FromUnion(Generic[_T]):
+    """
+    Convert a union type to a tuple of its constituent types.
+    If _T is not a union, returns a 1-tuple containing _T.
+    """
+    ...
+
+# --- Member/Param Accessors (sugar for GetArg) ---
+
+@_type_operator
+class GetName(Generic[_T]):
+    """Get the name from a Member or Param. Equivalent to GetArg[_T, Member, 0]."""
+    ...
+
+@_type_operator
+class GetType(Generic[_T]):
+    """Get the type from a Member or Param. Equivalent to GetArg[_T, Member, 1]."""
+    ...
+
+@_type_operator
+class GetQuals(Generic[_T]):
+    """Get the qualifiers from a Member or Param. Equivalent to GetArg[_T, Member, 2]."""
+    ...
+
+@_type_operator
+class GetInit(Generic[_T]):
+    """Get the initializer type from a Member. Equivalent to GetArg[_T, Member, 3]."""
+    ...
+
+@_type_operator
+class GetDefiner(Generic[_T]):
+    """Get the defining class from a Member. Equivalent to GetArg[_T, Member, 4]."""
+    ...
+
+# --- Type Construction Operators ---
+
+@_type_operator
+class NewProtocol(Generic[Unpack[_Ts]]):
+    """
+    Construct a new structural (protocol) type from Member types.
+    NewProtocol[Member[...], Member[...], ...] creates an anonymous protocol.
+    """
+    ...
+
+@_type_operator
+class NewTypedDict(Generic[Unpack[_Ts]]):
+    """
+    Construct a new TypedDict from Member types.
+    NewTypedDict[Member[...], Member[...], ...] creates an anonymous TypedDict.
+    """
+    ...
+
+# --- Boolean/Conditional Operators ---
+
+@_type_operator
+class Sub(Generic[_T, _Base]):
+    """
+    Type-level subtype check. Evaluates to a type-level boolean.
+    Used in conditional type expressions: `X if Sub[T, Base] else Y`
+    """
+    ...
+
+@_type_operator
+class Iter(Generic[_T]):
+    """
+    Marks a type for iteration in type comprehensions.
+    `for x in Iter[T]` iterates over elements of tuple type T.
+    """
+    ...
+
+# --- String Operations ---
+
+@_type_operator
+class Slice(Generic[_S, _Start, _End]):
+    """
+    Slice a literal string type.
+    Slice[Literal["hello"], Literal[1], Literal[3]] = Literal["el"]
+    """
+    ...
+
+@_type_operator
+class Concat(Generic[_S1, _S2]):
+    """
+    Concatenate two literal string types.
+    Concat[Literal["hello"], Literal["world"]] = Literal["helloworld"]
+    """
+    ...
+
+@_type_operator
+class Uppercase(Generic[_S]):
+    """Convert literal string to uppercase."""
+    ...
+
+@_type_operator
+class Lowercase(Generic[_S]):
+    """Convert literal string to lowercase."""
+    ...
+
+@_type_operator
+class Capitalize(Generic[_S]):
+    """Capitalize first character of literal string."""
+    ...
+
+@_type_operator
+class Uncapitalize(Generic[_S]):
+    """Lowercase first character of literal string."""
+    ...
+
+# --- Annotated Operations ---
+
+@_type_operator
+class GetAnnotations(Generic[_T]):
+    """
+    Extract Annotated metadata from a type.
+    GetAnnotations[Annotated[int, 'foo', 'bar']] = Literal['foo', 'bar']
+    GetAnnotations[int] = Never
+    """
+    ...
+
+@_type_operator
+class DropAnnotations(Generic[_T]):
+    """
+    Strip Annotated wrapper from a type.
+    DropAnnotations[Annotated[int, 'foo']] = int
+    DropAnnotations[int] = int
+    """
+    ...
+
+# --- Utility Operators ---
+
+@_type_operator
+class Length(Generic[_T]):
+    """
+    Get the length of a tuple type as a Literal[int].
+    Returns Literal[None] for unbounded tuples.
+    """
+    ...
+```
+
+### 1.6 Detecting Type Operators (`mypy/nodes.py`)
+
+Add a flag to TypeInfo to mark type operators:
+
+```python
+class TypeInfo(SymbolNode):
+    # ... existing fields ...
+
+    is_type_operator: bool = False  # True if decorated with @_type_operator
+```
+
+### 1.7 How Expansion Works
+
+The key insight is that `TypeOperatorType` is NOT a `ProperType`. Like `TypeAliasType`,
+it must be expanded before most type operations can use it. The expansion happens via:
+
+1. **`get_proper_type()`** in `mypy/typeops.py` - already handles `TypeAliasType`, extend to handle `TypeOperatorType`
+2. **Explicit `.expand()` calls** when we need to evaluate
+
+```python
+# In mypy/typeops.py
+def get_proper_type(typ: Type) -> ProperType:
+    while True:
+        if isinstance(typ, TypeAliasType):
+            typ = typ._expand_once()
+        elif isinstance(typ, TypeOperatorType):
+            typ = typ.expand()
+        elif isinstance(typ, ConditionalType):
+            typ = typ.expand()
+        elif isinstance(typ, TypeForComprehension):
+            typ = typ.expand()
+        else:
+            break
+
+    assert isinstance(typ, ProperType), type(typ)
+    return typ
 ```
 
 ---
 
 ## Phase 2: Type Analysis (`mypy/typeanal.py`)
 
-### 2.1 Parse New Special Forms
+### 2.1 Detect and Construct TypeOperatorType
 
-Extend `try_analyze_special_unbound_type()` to handle new constructs:
+Instead of special-casing each operator, we detect classes marked with `@_type_operator`
+and construct a generic `TypeOperatorType`:
 
 ```python
-def try_analyze_special_unbound_type(self, t: UnboundType, fullname: str) -> Type | None:
-    # ... existing cases ...
+def analyze_unbound_type_nonoptional(
+    self, t: UnboundType, report_invalid_types: bool
+) -> Type:
+    # ... existing logic to resolve the symbol ...
 
-    if fullname == 'typing.Member':
-        return self.analyze_member_type(t)
-    elif fullname == 'typing.Param':
-        return self.analyze_param_type(t)
-    elif fullname == 'typing.Sub':
-        return self.analyze_sub_condition(t)
-    elif fullname == 'typing.GetArg':
-        return self.analyze_get_arg(t)
-    elif fullname == 'typing.GetArgs':
-        return self.analyze_get_args(t)
-    elif fullname == 'typing.GetAttr':
-        return self.analyze_get_attr(t)
-    elif fullname in ('typing.GetName', 'typing.GetType', 'typing.GetQuals',
-                      'typing.GetInit', 'typing.GetDefiner'):
-        return self.analyze_member_accessor(t, fullname)
-    elif fullname == 'typing.Members':
-        return self.analyze_members(t)
-    elif fullname == 'typing.Attrs':
-        return self.analyze_attrs(t)
-    elif fullname == 'typing.FromUnion':
-        return self.analyze_from_union(t)
-    elif fullname == 'typing.NewProtocol':
-        return self.analyze_new_protocol(t)
-    elif fullname == 'typing.NewTypedDict':
-        return self.analyze_new_typed_dict(t)
-    elif fullname == 'typing.Iter':
-        return self.analyze_iter(t)
-    elif fullname == 'typing.Slice':
-        return self.analyze_slice(t)
-    elif fullname == 'typing.Concat':
-        return self.analyze_concat(t)
-    elif fullname in ('typing.Uppercase', 'typing.Lowercase',
-                      'typing.Capitalize', 'typing.Uncapitalize'):
-        return self.analyze_string_case(t, fullname)
-    elif fullname == 'typing.GetAnnotations':
-        return self.analyze_get_annotations(t)
-    elif fullname == 'typing.DropAnnotations':
-        return self.analyze_drop_annotations(t)
-    elif fullname == 'typing.Length':
-        return self.analyze_length(t)
+    node = self.lookup_qualified(t.name, t, ...)
 
-    return None
+    if isinstance(node, TypeInfo):
+        # Check if this is a type operator
+        if node.is_type_operator:
+            return self.analyze_type_operator(t, node)
+
+        # ... existing instance type handling ...
+
+    # ... rest of existing logic ...
+
+
+def analyze_type_operator(self, t: UnboundType, type_info: TypeInfo) -> Type:
+    """
+    Analyze a type operator application like GetArg[T, Base, 0].
+    Returns a TypeOperatorType that will be expanded later.
+    """
+    # Analyze all type arguments
+    args = [self.anal_type(arg) for arg in t.args]
+
+    # Validate argument count against the operator's type parameters
+    # (This is optional - could also defer to expansion time)
+    expected = len(type_info.type_vars)
+    if len(args) != expected:
+        self.fail(
+            f"Type operator {type_info.name} expects {expected} arguments, got {len(args)}",
+            t
+        )
+
+    return TypeOperatorType(type_info, args, line=t.line, column=t.column)
 ```
 
 ### 2.2 Parse Conditional Type Syntax
@@ -326,22 +540,38 @@ def analyze_callable_type(self, t: UnboundType) -> Type:
 
 ### 3.1 Create Type Evaluator
 
-A new module for evaluating type-level computations:
+A new module for evaluating type-level computations. The evaluator dispatches
+based on the operator's fullname rather than using isinstance checks for each
+operator type.
 
 ```python
 """Type-level computation evaluation."""
 
+from __future__ import annotations
+
+from typing import Callable
+
 from mypy.types import (
     Type, ProperType, Instance, TupleType, UnionType, LiteralType,
     TypedDictType, CallableType, NoneType, AnyType, UninhabitedType,
-    MemberType, ParamType, ConditionalType, TypeForComprehension,
-    GetArgType, GetArgsType, GetAttrType, MembersType, AttrsType,
-    FromUnionType, NewProtocolType, NewTypedDictType, IterType,
-    SliceType, ConcatType, StringCaseType, GetAnnotationsType,
-    DropAnnotationsType, TypeCondition, SubtypeCondition,
+    TypeOperatorType, ConditionalType, TypeForComprehension,
 )
 from mypy.subtypes import is_subtype
 from mypy.typeops import get_proper_type
+from mypy.nodes import TypeInfo
+
+
+# Registry mapping operator fullnames to their evaluation functions
+_OPERATOR_EVALUATORS: dict[str, Callable[[TypeLevelEvaluator, TypeOperatorType], Type]] = {}
+
+
+def register_operator(fullname: str):
+    """Decorator to register an operator evaluator."""
+    def decorator(func: Callable[[TypeLevelEvaluator, TypeOperatorType], Type]):
+        _OPERATOR_EVALUATORS[fullname] = func
+        return func
+    return decorator
+
 
 class TypeLevelEvaluator:
     """Evaluates type-level computations to concrete types."""
@@ -351,69 +581,40 @@ class TypeLevelEvaluator:
 
     def evaluate(self, typ: Type) -> Type:
         """Main entry point: evaluate a type to its simplified form."""
-        typ = get_proper_type(typ)
-
-        if isinstance(typ, ConditionalType):
+        if isinstance(typ, TypeOperatorType):
+            return self.eval_operator(typ)
+        elif isinstance(typ, ConditionalType):
             return self.eval_conditional(typ)
         elif isinstance(typ, TypeForComprehension):
             return self.eval_comprehension(typ)
-        elif isinstance(typ, GetArgType):
-            return self.eval_get_arg(typ)
-        elif isinstance(typ, GetArgsType):
-            return self.eval_get_args(typ)
-        elif isinstance(typ, GetAttrType):
-            return self.eval_get_attr(typ)
-        elif isinstance(typ, MembersType):
-            return self.eval_members(typ)
-        elif isinstance(typ, AttrsType):
-            return self.eval_attrs(typ)
-        elif isinstance(typ, FromUnionType):
-            return self.eval_from_union(typ)
-        elif isinstance(typ, NewProtocolType):
-            return self.eval_new_protocol(typ)
-        elif isinstance(typ, NewTypedDictType):
-            return self.eval_new_typed_dict(typ)
-        elif isinstance(typ, SliceType):
-            return self.eval_slice(typ)
-        elif isinstance(typ, ConcatType):
-            return self.eval_concat(typ)
-        elif isinstance(typ, StringCaseType):
-            return self.eval_string_case(typ)
-        elif isinstance(typ, GetAnnotationsType):
-            return self.eval_get_annotations(typ)
-        elif isinstance(typ, DropAnnotationsType):
-            return self.eval_drop_annotations(typ)
 
-        return typ  # Already a concrete type
+        return typ  # Already a concrete type or can't be evaluated
 
-    def eval_condition(self, cond: TypeCondition) -> bool | None:
-        """Evaluate a type condition. Returns None if undecidable."""
-        if isinstance(cond, SubtypeCondition):
-            left = self.evaluate(cond.left)
-            right = self.evaluate(cond.right)
+    def eval_operator(self, typ: TypeOperatorType) -> Type:
+        """Evaluate a type operator by dispatching to registered handler."""
+        fullname = typ.fullname
+        evaluator = _OPERATOR_EVALUATORS.get(fullname)
+
+        if evaluator is None:
+            # Unknown operator - return as-is (might be a data type like Member)
+            return typ
+
+        return evaluator(self, typ)
+
+    def eval_condition(self, cond: Type) -> bool | None:
+        """
+        Evaluate a type-level condition (Sub[T, Base]).
+        Returns True/False if decidable, None if undecidable.
+        """
+        if isinstance(cond, TypeOperatorType) and cond.fullname == 'typing.Sub':
+            left = self.evaluate(cond.args[0])
+            right = self.evaluate(cond.args[1])
             # Handle type variables - may be undecidable
             if self.contains_unresolved_typevar(left) or self.contains_unresolved_typevar(right):
                 return None
             return is_subtype(left, right)
-        elif isinstance(cond, NotCondition):
-            inner = self.eval_condition(cond.inner)
-            return None if inner is None else not inner
-        elif isinstance(cond, AndCondition):
-            left = self.eval_condition(cond.left)
-            right = self.eval_condition(cond.right)
-            if left is False or right is False:
-                return False
-            if left is None or right is None:
-                return None
-            return True
-        elif isinstance(cond, OrCondition):
-            left = self.eval_condition(cond.left)
-            right = self.eval_condition(cond.right)
-            if left is True or right is True:
-                return True
-            if left is None or right is None:
-                return None
-            return False
+
+        # Could add support for boolean combinations (and, or, not) here
         return None
 
     def eval_conditional(self, typ: ConditionalType) -> Type:
@@ -427,87 +628,15 @@ class TypeLevelEvaluator:
             # Undecidable - keep as ConditionalType
             return typ
 
-    def eval_get_arg(self, typ: GetArgType) -> Type:
-        """Evaluate GetArg[T, Base, Idx]"""
-        target = self.evaluate(typ.target)
-        base = self.evaluate(typ.base)
-        idx = self.evaluate(typ.index)
-
-        target = get_proper_type(target)
-        base = get_proper_type(base)
-
-        # Extract index as int
-        if not isinstance(idx, LiteralType) or not isinstance(idx.value, int):
-            return typ  # Can't evaluate without literal index
-
-        index = idx.value
-
-        if isinstance(target, Instance) and isinstance(base, Instance):
-            # Find the type args when target is viewed as base
-            args = self.get_type_args_for_base(target, base.type)
-            if args is not None and 0 <= index < len(args):
-                return args[index]
-            return UninhabitedType()  # Never
-
-        return typ  # Can't evaluate
-
-    def eval_get_args(self, typ: GetArgsType) -> Type:
-        """Evaluate GetArgs[T, Base] -> tuple of args"""
-        target = self.evaluate(typ.target)
-        base = self.evaluate(typ.base)
-
-        target = get_proper_type(target)
-        base = get_proper_type(base)
-
-        if isinstance(target, Instance) and isinstance(base, Instance):
-            args = self.get_type_args_for_base(target, base.type)
-            if args is not None:
-                return TupleType(list(args), self.api.named_type('builtins.tuple'))
-            return UninhabitedType()
-
-        return typ
-
-    def eval_members(self, typ: MembersType) -> Type:
-        """Evaluate Members[T] -> tuple of Member types"""
-        target = self.evaluate(typ.target)
-        target = get_proper_type(target)
-
-        if isinstance(target, Instance):
-            members = []
-            for name, node in target.type.names.items():
-                if node.type is not None:
-                    member = MemberType(
-                        name=LiteralType(name, self.api.named_type('builtins.str')),
-                        member_type=node.type,
-                        quals=self.extract_member_quals(node),
-                        init=self.extract_member_init(node),
-                        definer=Instance(target.type, [])
-                    )
-                    members.append(member)
-            return TupleType(members, self.api.named_type('builtins.tuple'))
-
-        return typ
-
-    def eval_attrs(self, typ: AttrsType) -> Type:
-        """Evaluate Attrs[T] -> tuple of Member types (annotated attrs only)"""
-        # Similar to members but filters to only annotated attributes
-        # (excludes methods, class variables without annotations, etc.)
-        pass
-
-    def eval_from_union(self, typ: FromUnionType) -> Type:
-        """Evaluate FromUnion[T] -> tuple of union elements"""
-        target = self.evaluate(typ.target)
-        target = get_proper_type(target)
-
-        if isinstance(target, UnionType):
-            return TupleType(list(target.items), self.api.named_type('builtins.tuple'))
-        else:
-            # Non-union becomes 1-tuple
-            return TupleType([target], self.api.named_type('builtins.tuple'))
-
     def eval_comprehension(self, typ: TypeForComprehension) -> Type:
         """Evaluate *[Expr for x in Iter[T] if Cond]"""
+        # First, evaluate the iter_type to get what we're iterating over
         iter_type = self.evaluate(typ.iter_type)
+
+        # If it's an Iter[T] operator, extract T
+        if isinstance(iter_type, TypeOperatorType) and iter_type.fullname == 'typing.Iter':
+            iter_type = self.evaluate(iter_type.args[0])
+
         iter_type = get_proper_type(iter_type)
 
         if not isinstance(iter_type, TupleType):
@@ -521,7 +650,7 @@ class TypeLevelEvaluator:
             # Check conditions
             all_conditions_true = True
             for cond in typ.conditions:
-                cond_subst = self.substitute_typevar_in_condition(cond, typ.iter_var, item)
+                cond_subst = self.substitute_typevar(cond, typ.iter_var, item)
                 result = self.eval_condition(cond_subst)
                 if result is False:
                     all_conditions_true = False
@@ -535,105 +664,53 @@ class TypeLevelEvaluator:
 
         return TupleType(results, self.api.named_type('builtins.tuple'))
 
-    def eval_new_protocol(self, typ: NewProtocolType) -> Type:
-        """Evaluate NewProtocol[*Members] -> create a new structural type"""
-        evaluated_members = [self.evaluate(m) for m in typ.members]
+    # --- Helper methods ---
 
-        # All members must be MemberType
-        for m in evaluated_members:
-            if not isinstance(get_proper_type(m), MemberType):
-                return typ  # Can't evaluate yet
-
-        # Create a new TypeInfo for the protocol
-        return self.create_protocol_from_members(evaluated_members)
-
-    def eval_new_typed_dict(self, typ: NewTypedDictType) -> Type:
-        """Evaluate NewTypedDict[*Members] -> create a new TypedDict"""
-        evaluated_members = [self.evaluate(m) for m in typ.members]
-
-        items = {}
-        required_keys = set()
-
-        for m in evaluated_members:
-            m = get_proper_type(m)
-            if not isinstance(m, MemberType):
-                return typ  # Can't evaluate yet
-
-            name = self.extract_literal_string(m.name)
-            if name is None:
-                return typ
-
-            items[name] = m.member_type
-            # Check quals for Required/NotRequired
-            if not self.has_not_required_qual(m.quals):
-                required_keys.add(name)
-
-        return TypedDictType(
-            items=items,
-            required_keys=required_keys,
-            readonly_keys=frozenset(),
-            fallback=self.api.named_type('typing.TypedDict')
-        )
-
-    # String operations
-    def eval_slice(self, typ: SliceType) -> Type:
-        """Evaluate Slice[S, Start, End]"""
-        target = self.evaluate(typ.target)
-        start = self.evaluate(typ.start)
-        end = self.evaluate(typ.end)
-
-        s = self.extract_literal_string(target)
-        start_val = self.extract_literal_int_or_none(start)
-        end_val = self.extract_literal_int_or_none(end)
-
-        if s is not None and start_val is not ... and end_val is not ...:
-            result = s[start_val:end_val]
-            return LiteralType(result, self.api.named_type('builtins.str'))
-
-        return typ
-
-    def eval_concat(self, typ: ConcatType) -> Type:
-        """Evaluate Concat[S1, S2]"""
-        left = self.extract_literal_string(self.evaluate(typ.left))
-        right = self.extract_literal_string(self.evaluate(typ.right))
-
-        if left is not None and right is not None:
-            return LiteralType(left + right, self.api.named_type('builtins.str'))
-
-        return typ
-
-    def eval_string_case(self, typ: StringCaseType) -> Type:
-        """Evaluate Uppercase, Lowercase, Capitalize, Uncapitalize"""
-        target = self.extract_literal_string(self.evaluate(typ.target))
-
-        if target is not None:
-            if typ.operation == 'upper':
-                result = target.upper()
-            elif typ.operation == 'lower':
-                result = target.lower()
-            elif typ.operation == 'capitalize':
-                result = target.capitalize()
-            elif typ.operation == 'uncapitalize':
-                result = target[0].lower() + target[1:] if target else target
-            else:
-                return typ
-            return LiteralType(result, self.api.named_type('builtins.str'))
-
-        return typ
-
-    # Helper methods
     def get_type_args_for_base(self, instance: Instance, base: TypeInfo) -> list[Type] | None:
         """Get type args when viewing instance as base class."""
         # Walk MRO to find base and map type arguments
-        pass
+        for base_instance in instance.type.mro:
+            if base_instance == base:
+                # Found it - now map arguments through inheritance
+                return self.map_type_args_to_base(instance, base)
+        return None
+
+    def map_type_args_to_base(self, instance: Instance, base: TypeInfo) -> list[Type]:
+        """Map instance's type args through inheritance chain to base."""
+        from mypy.expandtype import expand_type_by_instance
+        # Find the base in the MRO and get its type args
+        for b in instance.type.bases:
+            b_proper = get_proper_type(b)
+            if isinstance(b_proper, Instance) and b_proper.type == base:
+                return list(expand_type_by_instance(b_proper, instance).args)
+        return []
 
     def contains_unresolved_typevar(self, typ: Type) -> bool:
         """Check if type contains unresolved type variables."""
-        pass
+        from mypy.types import TypeVarType
+        from mypy.type_visitor import TypeQuery
+
+        class HasTypeVar(TypeQuery[bool]):
+            def __init__(self):
+                super().__init__(any)
+
+            def visit_type_var(self, t: TypeVarType) -> bool:
+                return True
+
+        return typ.accept(HasTypeVar())
 
     def substitute_typevar(self, typ: Type, var_name: str, replacement: Type) -> Type:
-        """Substitute a type variable with a concrete type."""
-        pass
+        """Substitute a type variable by name with a concrete type."""
+        from mypy.type_visitor import TypeTranslator
+        from mypy.types import TypeVarType
+
+        class SubstituteVar(TypeTranslator):
+            def visit_type_var(self, t: TypeVarType) -> Type:
+                if t.name == var_name:
+                    return replacement
+                return t
+
+        return typ.accept(SubstituteVar())
 
     def extract_literal_string(self, typ: Type) -> str | None:
         """Extract string value from LiteralType."""
@@ -642,19 +719,448 @@ class TypeLevelEvaluator:
             return typ.value
         return None
 
-    def extract_literal_int_or_none(self, typ: Type) -> int | None | ...:
-        """Extract int or None from LiteralType. Returns ... if not extractable."""
+    def extract_literal_int(self, typ: Type) -> int | None:
+        """Extract int value from LiteralType."""
         typ = get_proper_type(typ)
-        if isinstance(typ, NoneType):
-            return None
         if isinstance(typ, LiteralType) and isinstance(typ.value, int):
             return typ.value
-        return ...  # sentinel for "not extractable"
+        return None
 
-    def create_protocol_from_members(self, members: list[Type]) -> Type:
-        """Create a new Protocol TypeInfo from Member types."""
-        # This needs to create synthetic TypeInfo
+    def make_member_type(
+        self,
+        name: str,
+        member_type: Type,
+        quals: Type,
+        init: Type,
+        definer: Type,
+    ) -> TypeOperatorType:
+        """Create a Member[...] type operator."""
+        member_info = self.api.lookup_qualified('typing.Member', ...)
+        return TypeOperatorType(
+            member_info.node,  # TypeInfo for Member
+            [
+                LiteralType(name, self.api.named_type('builtins.str')),
+                member_type,
+                quals,
+                init,
+                definer,
+            ],
+        )
+
+    def create_protocol_from_members(self, members: list[TypeOperatorType]) -> Type:
+        """Create a new Protocol TypeInfo from Member type operators."""
+        # Extract member info and create synthetic TypeInfo
+        # This is complex - see Phase 4 for details
         pass
+
+
+# --- Operator Implementations ---
+
+@register_operator('typing.GetArg')
+def eval_get_arg(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """Evaluate GetArg[T, Base, Idx]"""
+    if len(typ.args) != 3:
+        return typ
+
+    target = evaluator.evaluate(typ.args[0])
+    base = evaluator.evaluate(typ.args[1])
+    idx = evaluator.evaluate(typ.args[2])
+
+    target = get_proper_type(target)
+    base = get_proper_type(base)
+
+    # Extract index as int
+    index = evaluator.extract_literal_int(idx)
+    if index is None:
+        return typ  # Can't evaluate without literal index
+
+    if isinstance(target, Instance) and isinstance(base, Instance):
+        args = evaluator.get_type_args_for_base(target, base.type)
+        if args is not None and 0 <= index < len(args):
+            return args[index]
+        return UninhabitedType()  # Never
+
+    # Handle TypeOperatorType targets (e.g., GetArg[Member[...], Member, 1])
+    if isinstance(target, TypeOperatorType) and isinstance(base, Instance):
+        if target.type == base.type:
+            if 0 <= index < len(target.args):
+                return target.args[index]
+        return UninhabitedType()
+
+    return typ
+
+
+@register_operator('typing.GetArgs')
+def eval_get_args(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """Evaluate GetArgs[T, Base] -> tuple of args"""
+    if len(typ.args) != 2:
+        return typ
+
+    target = evaluator.evaluate(typ.args[0])
+    base = evaluator.evaluate(typ.args[1])
+
+    target = get_proper_type(target)
+    base = get_proper_type(base)
+
+    if isinstance(target, Instance) and isinstance(base, Instance):
+        args = evaluator.get_type_args_for_base(target, base.type)
+        if args is not None:
+            return TupleType(list(args), evaluator.api.named_type('builtins.tuple'))
+        return UninhabitedType()
+
+    return typ
+
+
+@register_operator('typing.Members')
+def eval_members(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """Evaluate Members[T] -> tuple of Member types"""
+    if len(typ.args) != 1:
+        return typ
+
+    target = evaluator.evaluate(typ.args[0])
+    target = get_proper_type(target)
+
+    if isinstance(target, Instance):
+        members = []
+        for name, node in target.type.names.items():
+            if node.type is not None:
+                member = evaluator.make_member_type(
+                    name=name,
+                    member_type=node.type,
+                    quals=extract_member_quals(node),
+                    init=extract_member_init(node),
+                    definer=Instance(target.type, []),
+                )
+                members.append(member)
+        return TupleType(members, evaluator.api.named_type('builtins.tuple'))
+
+    return typ
+
+
+@register_operator('typing.Attrs')
+def eval_attrs(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """Evaluate Attrs[T] -> tuple of Member types (annotated attrs only)"""
+    if len(typ.args) != 1:
+        return typ
+
+    target = evaluator.evaluate(typ.args[0])
+    target = get_proper_type(target)
+
+    if isinstance(target, Instance):
+        members = []
+        for name, node in target.type.names.items():
+            # Filter to annotated instance attributes only
+            if (node.type is not None and
+                not node.is_classvar and
+                not isinstance(node.type, CallableType)):
+                member = evaluator.make_member_type(
+                    name=name,
+                    member_type=node.type,
+                    quals=extract_member_quals(node),
+                    init=extract_member_init(node),
+                    definer=Instance(target.type, []),
+                )
+                members.append(member)
+        return TupleType(members, evaluator.api.named_type('builtins.tuple'))
+
+    return typ
+
+
+@register_operator('typing.FromUnion')
+def eval_from_union(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """Evaluate FromUnion[T] -> tuple of union elements"""
+    if len(typ.args) != 1:
+        return typ
+
+    target = evaluator.evaluate(typ.args[0])
+    target = get_proper_type(target)
+
+    if isinstance(target, UnionType):
+        return TupleType(list(target.items), evaluator.api.named_type('builtins.tuple'))
+    else:
+        # Non-union becomes 1-tuple
+        return TupleType([target], evaluator.api.named_type('builtins.tuple'))
+
+
+@register_operator('typing.GetAttr')
+def eval_get_attr(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """Evaluate GetAttr[T, Name]"""
+    if len(typ.args) != 2:
+        return typ
+
+    target = evaluator.evaluate(typ.args[0])
+    name_type = evaluator.evaluate(typ.args[1])
+
+    target = get_proper_type(target)
+    name = evaluator.extract_literal_string(name_type)
+
+    if name is None:
+        return typ
+
+    if isinstance(target, Instance):
+        node = target.type.names.get(name)
+        if node is not None and node.type is not None:
+            return node.type
+        return UninhabitedType()
+
+    return typ
+
+
+# --- Member/Param Accessors (sugar for GetArg) ---
+
+@register_operator('typing.GetName')
+def eval_get_name(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """GetName[M] = GetArg[M, Member, 0] or GetArg[M, Param, 0]"""
+    if len(typ.args) != 1:
+        return typ
+
+    target = evaluator.evaluate(typ.args[0])
+    if isinstance(target, TypeOperatorType):
+        if target.fullname in ('typing.Member', 'typing.Param') and len(target.args) > 0:
+            return target.args[0]
+    return UninhabitedType()
+
+
+@register_operator('typing.GetType')
+def eval_get_type(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """GetType[M] = GetArg[M, Member, 1] or GetArg[M, Param, 1]"""
+    if len(typ.args) != 1:
+        return typ
+
+    target = evaluator.evaluate(typ.args[0])
+    if isinstance(target, TypeOperatorType):
+        if target.fullname in ('typing.Member', 'typing.Param') and len(target.args) > 1:
+            return target.args[1]
+    return UninhabitedType()
+
+
+@register_operator('typing.GetQuals')
+def eval_get_quals(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """GetQuals[M] = GetArg[M, Member, 2] or GetArg[M, Param, 2]"""
+    if len(typ.args) != 1:
+        return typ
+
+    target = evaluator.evaluate(typ.args[0])
+    if isinstance(target, TypeOperatorType):
+        if target.fullname in ('typing.Member', 'typing.Param') and len(target.args) > 2:
+            return target.args[2]
+    return UninhabitedType()
+
+
+@register_operator('typing.GetInit')
+def eval_get_init(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """GetInit[M] = GetArg[M, Member, 3]"""
+    if len(typ.args) != 1:
+        return typ
+
+    target = evaluator.evaluate(typ.args[0])
+    if isinstance(target, TypeOperatorType):
+        if target.fullname == 'typing.Member' and len(target.args) > 3:
+            return target.args[3]
+    return UninhabitedType()
+
+
+@register_operator('typing.GetDefiner')
+def eval_get_definer(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """GetDefiner[M] = GetArg[M, Member, 4]"""
+    if len(typ.args) != 1:
+        return typ
+
+    target = evaluator.evaluate(typ.args[0])
+    if isinstance(target, TypeOperatorType):
+        if target.fullname == 'typing.Member' and len(target.args) > 4:
+            return target.args[4]
+    return UninhabitedType()
+
+
+# --- String Operations ---
+
+@register_operator('typing.Slice')
+def eval_slice(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """Evaluate Slice[S, Start, End]"""
+    if len(typ.args) != 3:
+        return typ
+
+    s = evaluator.extract_literal_string(evaluator.evaluate(typ.args[0]))
+    start = evaluator.extract_literal_int(evaluator.evaluate(typ.args[1]))
+    end = evaluator.extract_literal_int(evaluator.evaluate(typ.args[2]))
+
+    # Handle None for start/end
+    start_arg = get_proper_type(evaluator.evaluate(typ.args[1]))
+    end_arg = get_proper_type(evaluator.evaluate(typ.args[2]))
+    if isinstance(start_arg, NoneType):
+        start = None
+    if isinstance(end_arg, NoneType):
+        end = None
+
+    if s is not None:
+        result = s[start:end]
+        return LiteralType(result, evaluator.api.named_type('builtins.str'))
+
+    return typ
+
+
+@register_operator('typing.Concat')
+def eval_concat(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """Evaluate Concat[S1, S2]"""
+    if len(typ.args) != 2:
+        return typ
+
+    left = evaluator.extract_literal_string(evaluator.evaluate(typ.args[0]))
+    right = evaluator.extract_literal_string(evaluator.evaluate(typ.args[1]))
+
+    if left is not None and right is not None:
+        return LiteralType(left + right, evaluator.api.named_type('builtins.str'))
+
+    return typ
+
+
+@register_operator('typing.Uppercase')
+def eval_uppercase(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    if len(typ.args) != 1:
+        return typ
+    s = evaluator.extract_literal_string(evaluator.evaluate(typ.args[0]))
+    if s is not None:
+        return LiteralType(s.upper(), evaluator.api.named_type('builtins.str'))
+    return typ
+
+
+@register_operator('typing.Lowercase')
+def eval_lowercase(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    if len(typ.args) != 1:
+        return typ
+    s = evaluator.extract_literal_string(evaluator.evaluate(typ.args[0]))
+    if s is not None:
+        return LiteralType(s.lower(), evaluator.api.named_type('builtins.str'))
+    return typ
+
+
+@register_operator('typing.Capitalize')
+def eval_capitalize(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    if len(typ.args) != 1:
+        return typ
+    s = evaluator.extract_literal_string(evaluator.evaluate(typ.args[0]))
+    if s is not None:
+        return LiteralType(s.capitalize(), evaluator.api.named_type('builtins.str'))
+    return typ
+
+
+@register_operator('typing.Uncapitalize')
+def eval_uncapitalize(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    if len(typ.args) != 1:
+        return typ
+    s = evaluator.extract_literal_string(evaluator.evaluate(typ.args[0]))
+    if s is not None:
+        result = s[0].lower() + s[1:] if s else s
+        return LiteralType(result, evaluator.api.named_type('builtins.str'))
+    return typ
+
+
+# --- Type Construction ---
+
+@register_operator('typing.NewProtocol')
+def eval_new_protocol(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """Evaluate NewProtocol[*Members] -> create a new structural type"""
+    evaluated_members = [evaluator.evaluate(m) for m in typ.args]
+
+    # All members must be Member type operators
+    for m in evaluated_members:
+        if not isinstance(m, TypeOperatorType) or m.fullname != 'typing.Member':
+            return typ  # Can't evaluate yet
+
+    return evaluator.create_protocol_from_members(evaluated_members)
+
+
+@register_operator('typing.NewTypedDict')
+def eval_new_typed_dict(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """Evaluate NewTypedDict[*Members] -> create a new TypedDict"""
+    evaluated_members = [evaluator.evaluate(m) for m in typ.args]
+
+    items = {}
+    required_keys = set()
+
+    for m in evaluated_members:
+        if not isinstance(m, TypeOperatorType) or m.fullname != 'typing.Member':
+            return typ  # Can't evaluate yet
+
+        name = evaluator.extract_literal_string(m.args[0])
+        if name is None:
+            return typ
+
+        items[name] = m.args[1]  # The type
+        # Check quals (args[2]) for Required/NotRequired
+        quals = get_proper_type(m.args[2]) if len(m.args) > 2 else UninhabitedType()
+        if not has_not_required_qual(quals):
+            required_keys.add(name)
+
+    return TypedDictType(
+        items=items,
+        required_keys=required_keys,
+        readonly_keys=frozenset(),
+        fallback=evaluator.api.named_type('typing.TypedDict'),
+    )
+
+
+@register_operator('typing.Length')
+def eval_length(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """Evaluate Length[T] -> Literal[int] for tuple length"""
+    if len(typ.args) != 1:
+        return typ
+
+    target = evaluator.evaluate(typ.args[0])
+    target = get_proper_type(target)
+
+    if isinstance(target, TupleType):
+        if target.partial_fallback:
+            # Unbounded tuple
+            return NoneType()
+        return LiteralType(len(target.items), evaluator.api.named_type('builtins.int'))
+
+    return typ
+
+
+# --- Helper functions ---
+
+def extract_member_quals(node) -> Type:
+    """Extract qualifiers (ClassVar, Final) from a symbol table node."""
+    # Implementation depends on how qualifiers are stored
+    return UninhabitedType()  # Never = no qualifiers
+
+
+def extract_member_init(node) -> Type:
+    """Extract the literal type of an initializer from a symbol table node."""
+    # Implementation depends on how initializers are tracked
+    return UninhabitedType()  # Never = no initializer
+
+
+def has_not_required_qual(quals: Type) -> bool:
+    """Check if qualifiers include NotRequired."""
+    # Implementation depends on qualifier representation
+    return False
+
+
+# --- Public API ---
+
+def evaluate_type_operator(typ: TypeOperatorType) -> Type:
+    """Evaluate a TypeOperatorType. Called from TypeOperatorType.expand()."""
+    # Need to get the API somehow - this is a design question
+    # Option 1: Pass API through a context variable
+    # Option 2: Store API reference on TypeOperatorType
+    # Option 3: Create evaluator lazily
+    evaluator = TypeLevelEvaluator(...)
+    return evaluator.eval_operator(typ)
+
+
+def evaluate_conditional(typ: ConditionalType) -> Type:
+    """Evaluate a ConditionalType. Called from ConditionalType.expand()."""
+    evaluator = TypeLevelEvaluator(...)
+    return evaluator.eval_conditional(typ)
+
+
+def evaluate_comprehension(typ: TypeForComprehension) -> Type:
+    """Evaluate a TypeForComprehension. Called from TypeForComprehension.expand()."""
+    evaluator = TypeLevelEvaluator(...)
+    return evaluator.eval_comprehension(typ)
 ```
 
 ---
@@ -952,39 +1458,53 @@ Port examples from the PEP:
 
 ## Key Design Decisions
 
-### 1. Lazy vs Eager Evaluation
-**Decision**: Lazy evaluation with caching. Type-level computations are evaluated when needed (e.g., during subtype checking) rather than immediately during parsing.
+### 1. Unified TypeOperatorType (Not Per-Operator Classes)
+**Decision**: Use a single `TypeOperatorType` class that references a TypeInfo (the operator) and contains args, rather than creating separate classes for each operator (GetArgType, MembersType, etc.). This keeps mypy's core minimal and allows new operators to be added in typeshed without modifying mypy.
 
-### 2. Handling Undecidable Conditions
+### 2. Type Operators Declared in Typeshed
+**Decision**: All type operators (`GetArg`, `Members`, `Member`, `Param`, etc.) are declared as generic classes in `mypy/typeshed/stdlib/typing.pyi` with the `@_type_operator` decorator. This makes them first-class citizens that can be imported and used like any other typing construct.
+
+### 3. TypeOperatorType is NOT a ProperType
+**Decision**: Like `TypeAliasType`, `TypeOperatorType` must be expanded before use in most type operations. This is handled by extending `get_proper_type()` to evaluate type operators.
+
+### 4. Lazy Evaluation with Caching
+**Decision**: Type-level computations are evaluated when needed (e.g., during subtype checking) rather than immediately during parsing. Results should be cached.
+
+### 5. Handling Undecidable Conditions
 **Decision**: When a condition cannot be evaluated (e.g., involves unbound type variables), preserve the conditional type. It will be evaluated later when more type information is available.
 
-### 3. Synthetic Type Identity
+### 6. Synthetic Type Identity
 **Decision**: Types created via `NewProtocol` are structural (protocols), so identity is based on structure, not name. Each creation point may produce a "different" type that is structurally equivalent.
 
-### 4. Error Handling
+### 7. Error Handling
 **Decision**: Invalid type-level operations (e.g., `GetArg` on non-generic type) return `Never` rather than raising errors, consistent with the spec.
 
-### 5. Runtime Evaluation
+### 8. Runtime Evaluation
 **Decision**: This implementation focuses on static type checking. Runtime evaluation is a separate library concern (as noted in the spec).
+
+### 9. Registry-Based Operator Dispatch
+**Decision**: The evaluator uses a registry mapping operator fullnames to evaluation functions (via `@register_operator` decorator). This allows adding new operators without modifying the core evaluator logic.
 
 ---
 
 ## Files to Create/Modify
 
 ### New Files
-- `mypy/typelevel.py` - Type-level computation evaluator
+- `mypy/typelevel.py` - Type-level computation evaluator with operator registry
 - `mypy/test/test_typelevel_*.py` - Test files
 - `test-data/unit/check-typelevel-*.test` - Test data
 
 ### Modified Files
-- `mypy/types.py` - Add new type classes
-- `mypy/type_visitor.py` - Add visitor methods
-- `mypy/typeanal.py` - Parse new special forms
-- `mypy/expandtype.py` - Expand new types
-- `mypy/subtypes.py` - Subtype rules
-- `mypy/checkexpr.py` - kwargs inference
-- `mypy/semanal.py` - InitField handling
-- `mypy/nodes.py` - Possibly extend TypeInfo
+- `mypy/types.py` - Add `TypeOperatorType`, `ConditionalType`, `TypeForComprehension` classes
+- `mypy/type_visitor.py` - Add `visit_type_operator_type`, `visit_conditional_type`, `visit_type_for_comprehension`
+- `mypy/typeanal.py` - Detect `@_type_operator` classes and construct `TypeOperatorType`
+- `mypy/typeops.py` - Extend `get_proper_type()` to expand type operators
+- `mypy/expandtype.py` - Handle type variable substitution in type operators
+- `mypy/subtypes.py` - Subtype rules for unevaluated type operators
+- `mypy/checkexpr.py` - kwargs TypedDict inference
+- `mypy/semanal.py` - Detect `@_type_operator` decorator, InitField handling
+- `mypy/nodes.py` - Add `is_type_operator` flag to `TypeInfo`
+- `mypy/typeshed/stdlib/typing.pyi` - Declare all type operators with `@_type_operator`
 
 ---
 
@@ -1000,4 +1520,6 @@ Port examples from the PEP:
 
 5. **Caching strategy**: How aggressively to cache evaluated type-level computations?
 
-6. **Plugin interaction**: Should plugins be able to define custom type operators?
+6. **API access in expand()**: How does `TypeOperatorType.expand()` get access to the semantic analyzer API? Options: context variable, stored reference, or lazy creation.
+
+7. **Type variable handling in operators**: When should type variables in operator arguments block evaluation vs. be substituted first?
