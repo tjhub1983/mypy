@@ -28,17 +28,45 @@ Rather than creating a separate class for each type operator, we use a single un
 - Allows new operators to be added in typeshed without modifying mypy's core
 - Treats type operators as "unevaluated" types that expand to concrete types
 
-### 1.2 Add `TypeOperatorType` (`mypy/types.py`)
+### 1.2 Add `ComputedType` Base Class (`mypy/types.py`)
+
+All type-level computation types share a common base class that defines the `expand()` interface:
 
 ```python
-class TypeOperatorType(Type):
+class ComputedType(Type):
+    """
+    Base class for types that represent unevaluated type-level computations.
+
+    NOT a ProperType - must be expanded/evaluated before use in most type
+    operations. Analogous to TypeAliasType in that it wraps a computation
+    that produces a concrete type.
+
+    Subclasses:
+    - TypeOperatorType: e.g., GetArg[T, Base, 0], Members[T]
+    - ConditionalType: e.g., X if Sub[T, Base] else Y
+    - TypeForComprehension: e.g., *[Expr for x in Iter[T] if Cond]
+    """
+
+    __slots__ = ()
+
+    def expand(self) -> Type:
+        """
+        Evaluate this computed type to produce a concrete type.
+        Returns self if evaluation is not yet possible (e.g., contains unresolved type vars).
+
+        Subclasses must implement this method.
+        """
+        raise NotImplementedError
+```
+
+### 1.3 Add `TypeOperatorType` (`mypy/types.py`)
+
+```python
+class TypeOperatorType(ComputedType):
     """
     Represents an unevaluated type operator application, e.g., GetArg[T, Base, 0].
 
-    Analogous to TypeAliasType: stores a reference to the operator's TypeInfo
-    and the type arguments. NOT a ProperType - must be expanded before use
-    in most type operations.
-
+    Stores a reference to the operator's TypeInfo and the type arguments.
     Type operators are generic classes in typeshed marked with @_type_operator.
     """
 
@@ -63,10 +91,7 @@ class TypeOperatorType(Type):
         return self.type.fullname
 
     def expand(self) -> Type:
-        """
-        Evaluate this type operator to produce a concrete type.
-        Returns self if evaluation is not yet possible (e.g., contains unresolved type vars).
-        """
+        """Evaluate this type operator to produce a concrete type."""
         from mypy.typelevel import evaluate_type_operator
         return evaluate_type_operator(self)
 
@@ -91,16 +116,13 @@ class TypeOperatorType(Type):
         )
 ```
 
-### 1.3 Conditional Types and Comprehensions (`mypy/types.py`)
-
-These are special syntactic constructs that need their own type classes:
+### 1.4 Conditional Types and Comprehensions (`mypy/types.py`)
 
 ```python
-class ConditionalType(Type):
+class ConditionalType(ComputedType):
     """
     Represents `TrueType if Sub[T, Base] else FalseType`.
 
-    NOT a ProperType - must be evaluated/expanded before use.
     The condition is itself a TypeOperatorType (Sub[...]).
     """
 
@@ -128,11 +150,11 @@ class ConditionalType(Type):
         return evaluate_conditional(self)
 
 
-class TypeForComprehension(Type):
+class TypeForComprehension(ComputedType):
     """
     Represents *[Expr for var in Iter[T] if Cond].
 
-    NOT a ProperType - expands to a tuple of types.
+    Expands to a tuple of types.
     """
 
     __slots__ = ("element_expr", "iter_var", "iter_type", "conditions")
@@ -161,9 +183,9 @@ class TypeForComprehension(Type):
         return evaluate_comprehension(self)
 ```
 
-### 1.4 Update Type Visitor (`mypy/type_visitor.py`)
+### 1.5 Update Type Visitor (`mypy/type_visitor.py`)
 
-Add visitor methods for the new types:
+Add visitor methods for the new types (note: no visitor for `ComputedType` base class - each subclass has its own):
 
 ```python
 class TypeVisitor(Generic[T]):
@@ -174,7 +196,7 @@ class TypeVisitor(Generic[T]):
     def visit_type_for_comprehension(self, t: TypeForComprehension) -> T: ...
 ```
 
-### 1.5 Declare Type Operators in Typeshed (`mypy/typeshed/stdlib/typing.pyi`)
+### 1.6 Declare Type Operators in Typeshed (`mypy/typeshed/stdlib/typing.pyi`)
 
 All type operators are declared as generic classes with the `@_type_operator` decorator.
 This decorator marks them for special handling by the type checker.
@@ -385,7 +407,7 @@ class Length(Generic[_T]):
     ...
 ```
 
-### 1.6 Detecting Type Operators (`mypy/nodes.py`)
+### 1.7 Detecting Type Operators (`mypy/nodes.py`)
 
 Add a flag to TypeInfo to mark type operators:
 
@@ -396,12 +418,13 @@ class TypeInfo(SymbolNode):
     is_type_operator: bool = False  # True if decorated with @_type_operator
 ```
 
-### 1.7 How Expansion Works
+### 1.8 How Expansion Works
 
-The key insight is that `TypeOperatorType` is NOT a `ProperType`. Like `TypeAliasType`,
-it must be expanded before most type operations can use it. The expansion happens via:
+The key insight is that `ComputedType` (and its subclasses) is NOT a `ProperType`.
+Like `TypeAliasType`, it must be expanded before most type operations can use it.
+The expansion happens via:
 
-1. **`get_proper_type()`** in `mypy/typeops.py` - already handles `TypeAliasType`, extend to handle `TypeOperatorType`
+1. **`get_proper_type()`** in `mypy/typeops.py` - already handles `TypeAliasType`, extend to handle `ComputedType`
 2. **Explicit `.expand()` calls** when we need to evaluate
 
 ```python
@@ -410,11 +433,8 @@ def get_proper_type(typ: Type) -> ProperType:
     while True:
         if isinstance(typ, TypeAliasType):
             typ = typ._expand_once()
-        elif isinstance(typ, TypeOperatorType):
-            typ = typ.expand()
-        elif isinstance(typ, ConditionalType):
-            typ = typ.expand()
-        elif isinstance(typ, TypeForComprehension):
+        elif isinstance(typ, ComputedType):
+            # Handles TypeOperatorType, ConditionalType, TypeForComprehension
             typ = typ.expand()
         else:
             break
@@ -1399,8 +1419,8 @@ Port examples from the PEP:
 ### 2b. Member/Param Accessors as Type Aliases
 **Decision**: `GetName`, `GetType`, `GetQuals`, `GetInit`, `GetDefiner` are type aliases using `GetAttr`, not separate type operators. Since `Member` and `Param` are regular classes with attributes, `GetAttr[Member[...], Literal["name"]]` works directly.
 
-### 3. TypeOperatorType is NOT a ProperType
-**Decision**: Like `TypeAliasType`, `TypeOperatorType` must be expanded before use in most type operations. This is handled by extending `get_proper_type()` to evaluate type operators.
+### 3. ComputedType Hierarchy (NOT ProperType)
+**Decision**: All computed types (`TypeOperatorType`, `ConditionalType`, `TypeForComprehension`) inherit from a common `ComputedType` base class. Like `TypeAliasType`, `ComputedType` is NOT a `ProperType` and must be expanded before use in most type operations. This is handled by a single `isinstance(typ, ComputedType)` check in `get_proper_type()`.
 
 ### 4. Lazy Evaluation with Caching
 **Decision**: Type-level computations are evaluated when needed (e.g., during subtype checking) rather than immediately during parsing. Results should be cached.
@@ -1430,7 +1450,7 @@ Port examples from the PEP:
 - `test-data/unit/check-typelevel-*.test` - Test data
 
 ### Modified Files
-- `mypy/types.py` - Add `TypeOperatorType`, `ConditionalType`, `TypeForComprehension` classes
+- `mypy/types.py` - Add `ComputedType` base class, `TypeOperatorType`, `ConditionalType`, `TypeForComprehension`
 - `mypy/type_visitor.py` - Add `visit_type_operator_type`, `visit_conditional_type`, `visit_type_for_comprehension`
 - `mypy/typeanal.py` - Detect `@_type_operator` classes and construct `TypeOperatorType`
 - `mypy/typeops.py` - Extend `get_proper_type()` to expand type operators
