@@ -492,25 +492,104 @@ def analyze_type_operator(self, t: UnboundType, type_info: TypeInfo) -> Type:
 
 ### 2.2 Parse Conditional Type Syntax
 
-Need to handle the `X if Cond else Y` syntax in type contexts. This requires modification to how type expressions are parsed.
+Handle the `X if Sub[T, Base] else Y` syntax in type contexts by extending the parser.
 
-**Option A**: Use a special form `Cond[TrueType, Condition, FalseType]`
-**Option B**: Extend the parser to handle ternary in type contexts
+#### 2.2.1 AST Representation
 
-For now, pursue Option A as it's less invasive:
+Python's parser already produces `IfExpr` (ternary) nodes. In type contexts, we need to
+recognize these and convert them to type expressions. The AST for `X if Cond else Y` is:
 
 ```python
-# typing.Cond[TrueType, Sub[T, Base], FalseType]
-def analyze_conditional_type(self, t: UnboundType) -> Type:
-    if len(t.args) != 3:
-        self.fail('Cond requires 3 arguments', t)
+IfExpr(
+    cond=...,   # The condition expression
+    body=...,   # The "true" branch (X)
+    orelse=..., # The "false" branch (Y)
+)
+```
+
+#### 2.2.2 Extend `expr_to_unanalyzed_type()` (`mypy/fastparse.py`)
+
+The `expr_to_unanalyzed_type()` function converts AST expressions to unanalyzed types.
+Extend it to handle `IfExpr`:
+
+```python
+def expr_to_unanalyzed_type(
+    expr: ast.expr,
+    options: Options,
+    ...,
+) -> ProperType | UnboundType:
+    # ... existing cases ...
+
+    if isinstance(expr, IfExpr):
+        # Convert ternary to ConditionalUnboundType
+        return ConditionalUnboundType(
+            condition=expr_to_unanalyzed_type(expr.cond, options, ...),
+            true_type=expr_to_unanalyzed_type(expr.body, options, ...),
+            false_type=expr_to_unanalyzed_type(expr.orelse, options, ...),
+            line=expr.lineno,
+            column=expr.col_offset,
+        )
+
+    # ... rest of existing logic ...
+```
+
+#### 2.2.3 Add `ConditionalUnboundType` (`mypy/types.py`)
+
+A new unbound type to represent conditionals before analysis:
+
+```python
+class ConditionalUnboundType(Type):
+    """Unanalyzed conditional type: X if Cond else Y"""
+
+    __slots__ = ("condition", "true_type", "false_type")
+
+    def __init__(
+        self,
+        condition: Type,
+        true_type: Type,
+        false_type: Type,
+        line: int = -1,
+        column: int = -1,
+    ) -> None:
+        super().__init__(line, column)
+        self.condition = condition
+        self.true_type = true_type
+        self.false_type = false_type
+
+    def accept(self, visitor: TypeVisitor[T]) -> T:
+        return visitor.visit_conditional_unbound_type(self)
+```
+
+#### 2.2.4 Analyze Conditional Types (`mypy/typeanal.py`)
+
+In `TypeAnalyser`, handle `ConditionalUnboundType`:
+
+```python
+def visit_conditional_unbound_type(self, t: ConditionalUnboundType) -> Type:
+    """Analyze X if Sub[T, Base] else Y"""
+    # Analyze all three parts
+    condition = self.anal_type(t.condition)
+    true_type = self.anal_type(t.true_type)
+    false_type = self.anal_type(t.false_type)
+
+    # Validate condition is a Sub[...] or boolean combination
+    if not self.is_valid_type_condition(condition):
+        self.fail(
+            "Condition in type-level conditional must be Sub[T, Base] "
+            "or a boolean combination thereof",
+            t
+        )
         return AnyType(TypeOfAny.from_error)
 
-    true_type = self.anal_type(t.args[0])
-    condition = self.analyze_type_condition(t.args[1])
-    false_type = self.anal_type(t.args[2])
+    return ConditionalType(condition, true_type, false_type, line=t.line, column=t.column)
 
-    return ConditionalType(condition, true_type, false_type)
+
+def is_valid_type_condition(self, typ: Type) -> bool:
+    """Check if typ is a valid type-level condition (Sub or boolean combo)."""
+    if isinstance(typ, TypeOperatorType):
+        return typ.fullname == 'typing.Sub'
+    # Could also check for And/Or/Not combinations if we support those
+    return False
 ```
 
 ### 2.3 Parse Type Comprehensions
@@ -1450,9 +1529,10 @@ Port examples from the PEP:
 - `test-data/unit/check-typelevel-*.test` - Test data
 
 ### Modified Files
-- `mypy/types.py` - Add `ComputedType` base class, `TypeOperatorType`, `ConditionalType`, `TypeForComprehension`
-- `mypy/type_visitor.py` - Add `visit_type_operator_type`, `visit_conditional_type`, `visit_type_for_comprehension`
-- `mypy/typeanal.py` - Detect `@_type_operator` classes and construct `TypeOperatorType`
+- `mypy/types.py` - Add `ComputedType` base class, `TypeOperatorType`, `ConditionalType`, `TypeForComprehension`, `ConditionalUnboundType`
+- `mypy/type_visitor.py` - Add `visit_type_operator_type`, `visit_conditional_type`, `visit_type_for_comprehension`, `visit_conditional_unbound_type`
+- `mypy/fastparse.py` - Extend `expr_to_unanalyzed_type()` to handle `IfExpr` for conditional types
+- `mypy/typeanal.py` - Detect `@_type_operator` classes, construct `TypeOperatorType`, analyze `ConditionalUnboundType`
 - `mypy/typeops.py` - Extend `get_proper_type()` to expand type operators
 - `mypy/expandtype.py` - Handle type variable substitution in type operators
 - `mypy/subtypes.py` - Subtype rules for unevaluated type operators
@@ -1465,16 +1545,14 @@ Port examples from the PEP:
 
 ## Open Questions for Discussion
 
-1. **Syntax for conditionals**: Use `X if Sub[T, Base] else Y` (requires parser changes) or `Cond[X, Sub[T, Base], Y]` (works with existing syntax)?
+1. **Protocol vs TypedDict creation**: Should `NewProtocol` create true protocols (with `is_protocol=True`) or just structural types?
 
-2. **Protocol vs TypedDict creation**: Should `NewProtocol` create true protocols (with `is_protocol=True`) or just structural types?
+2. **Type alias recursion**: How to handle recursive type aliases that use type-level computation?
 
-3. **Type alias recursion**: How to handle recursive type aliases that use type-level computation?
+3. **Error recovery**: What should happen when type-level computation fails? Currently spec says return `Never`.
 
-4. **Error recovery**: What should happen when type-level computation fails? Currently spec says return `Never`.
+4. **Caching strategy**: How aggressively to cache evaluated type-level computations?
 
-5. **Caching strategy**: How aggressively to cache evaluated type-level computations?
+5. **API access in expand()**: How does `TypeOperatorType.expand()` get access to the semantic analyzer API? Options: context variable, stored reference, or lazy creation.
 
-6. **API access in expand()**: How does `TypeOperatorType.expand()` get access to the semantic analyzer API? Options: context variable, stored reference, or lazy creation.
-
-7. **Type variable handling in operators**: When should type variables in operator arguments block evaluation vs. be substituted first?
+6. **Type variable handling in operators**: When should type variables in operator arguments block evaluation vs. be substituted first?
