@@ -23,6 +23,7 @@ from mypy.types import (
     AnyType,
     CallableArgument,
     CallableType,
+    ConditionalType,
     DeletedType,
     EllipsisType,
     ErasedType,
@@ -39,7 +40,9 @@ from mypy.types import (
     Type,
     TypeAliasType,
     TypedDictType,
+    TypeForComprehension,
     TypeList,
+    TypeOperatorType,
     TypeType,
     TypeVarLikeType,
     TypeVarTupleType,
@@ -144,6 +147,18 @@ class TypeVisitor(Generic[T]):
 
     @abstractmethod
     def visit_unpack_type(self, t: UnpackType, /) -> T:
+        pass
+
+    @abstractmethod
+    def visit_type_operator_type(self, t: TypeOperatorType, /) -> T:
+        pass
+
+    @abstractmethod
+    def visit_conditional_type(self, t: ConditionalType, /) -> T:
+        pass
+
+    @abstractmethod
+    def visit_type_for_comprehension(self, t: TypeForComprehension, /) -> T:
         pass
 
 
@@ -340,6 +355,23 @@ class TypeTranslator(TypeVisitor[Type]):
         # must implement this depending on its semantics.
         pass
 
+    def visit_type_operator_type(self, t: TypeOperatorType, /) -> Type:
+        return t.copy_modified(args=self.translate_type_list(t.args))
+
+    def visit_conditional_type(self, t: ConditionalType, /) -> Type:
+        return t.copy_modified(
+            condition=t.condition.accept(self),
+            true_type=t.true_type.accept(self),
+            false_type=t.false_type.accept(self),
+        )
+
+    def visit_type_for_comprehension(self, t: TypeForComprehension, /) -> Type:
+        return t.copy_modified(
+            element_expr=t.element_expr.accept(self),
+            iter_type=t.iter_type.accept(self),
+            conditions=[c.accept(self) for c in t.conditions],
+        )
+
 
 @mypyc_attr(allow_interpreted_subclasses=True)
 class TypeQuery(SyntheticTypeVisitor[T]):
@@ -455,6 +487,15 @@ class TypeQuery(SyntheticTypeVisitor[T]):
             return self.strategy([])
         self.seen_aliases.add(t)
         return get_proper_type(t).accept(self)
+
+    def visit_type_operator_type(self, t: TypeOperatorType, /) -> T:
+        return self.query_types(t.args)
+
+    def visit_conditional_type(self, t: ConditionalType, /) -> T:
+        return self.query_types([t.condition, t.true_type, t.false_type])
+
+    def visit_type_for_comprehension(self, t: TypeForComprehension, /) -> T:
+        return self.query_types([t.element_expr, t.iter_type] + t.conditions)
 
     def query_types(self, types: Iterable[Type]) -> T:
         """Perform a query for a list of types using the strategy to combine the results."""
@@ -596,6 +637,15 @@ class BoolTypeQuery(SyntheticTypeVisitor[bool]):
             return self.default
         self.seen_aliases.add(t)
         return get_proper_type(t).accept(self)
+
+    def visit_type_operator_type(self, t: TypeOperatorType, /) -> bool:
+        return self.query_types(t.args)
+
+    def visit_conditional_type(self, t: ConditionalType, /) -> bool:
+        return self.query_types([t.condition, t.true_type, t.false_type])
+
+    def visit_type_for_comprehension(self, t: TypeForComprehension, /) -> bool:
+        return self.query_types([t.element_expr, t.iter_type] + t.conditions)
 
     def query_types(self, types: list[Type] | tuple[Type, ...]) -> bool:
         """Perform a query for a sequence of types using the strategy to combine the results."""

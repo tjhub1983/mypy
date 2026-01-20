@@ -3581,6 +3581,7 @@ class TypeInfo(SymbolNode):
         "self_type",
         "dataclass_transform_spec",
         "is_type_check_only",
+        "is_type_operator",
         "deprecated",
         "type_object_type",
     )
@@ -3737,6 +3738,10 @@ class TypeInfo(SymbolNode):
     # Is set to `True` when class is decorated with `@typing.type_check_only`
     is_type_check_only: bool
 
+    # Is set to `True` when class is decorated with `@typing._type_operator`
+    # Type operators are used for type-level computation (e.g., GetArg, Members, etc.)
+    is_type_operator: bool
+
     # The type's deprecation message (in case it is deprecated)
     deprecated: str | None
 
@@ -3756,6 +3761,7 @@ class TypeInfo(SymbolNode):
         "is_final",
         "is_disjoint_base",
         "is_intersection",
+        "is_type_operator",
     ]
 
     def __init__(self, names: SymbolTable, defn: ClassDef, module_name: str) -> None:
@@ -3803,6 +3809,7 @@ class TypeInfo(SymbolNode):
         self.self_type = None
         self.dataclass_transform_spec = None
         self.is_type_check_only = False
+        self.is_type_operator = False
         self.deprecated = None
         self.type_object_type = None
 
