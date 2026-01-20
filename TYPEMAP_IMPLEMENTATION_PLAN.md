@@ -510,7 +510,7 @@ IfExpr(
 #### 2.2.2 Extend `expr_to_unanalyzed_type()` (`mypy/fastparse.py`)
 
 The `expr_to_unanalyzed_type()` function converts AST expressions to unanalyzed types.
-Extend it to handle `IfExpr`:
+Extend it to handle `IfExpr`, converting directly to `ConditionalType`:
 
 ```python
 def expr_to_unanalyzed_type(
@@ -521,8 +521,8 @@ def expr_to_unanalyzed_type(
     # ... existing cases ...
 
     if isinstance(expr, IfExpr):
-        # Convert ternary to ConditionalUnboundType
-        return ConditionalUnboundType(
+        # Convert ternary directly to ConditionalType
+        return ConditionalType(
             condition=expr_to_unanalyzed_type(expr.cond, options, ...),
             true_type=expr_to_unanalyzed_type(expr.body, options, ...),
             false_type=expr_to_unanalyzed_type(expr.orelse, options, ...),
@@ -533,41 +533,14 @@ def expr_to_unanalyzed_type(
     # ... rest of existing logic ...
 ```
 
-#### 2.2.3 Add `ConditionalUnboundType` (`mypy/types.py`)
+#### 2.2.3 Handle in Type Analysis (`mypy/typeanal.py`)
 
-A new unbound type to represent conditionals before analysis:
-
-```python
-class ConditionalUnboundType(Type):
-    """Unanalyzed conditional type: X if Cond else Y"""
-
-    __slots__ = ("condition", "true_type", "false_type")
-
-    def __init__(
-        self,
-        condition: Type,
-        true_type: Type,
-        false_type: Type,
-        line: int = -1,
-        column: int = -1,
-    ) -> None:
-        super().__init__(line, column)
-        self.condition = condition
-        self.true_type = true_type
-        self.false_type = false_type
-
-    def accept(self, visitor: TypeVisitor[T]) -> T:
-        return visitor.visit_conditional_unbound_type(self)
-```
-
-#### 2.2.4 Analyze Conditional Types (`mypy/typeanal.py`)
-
-In `TypeAnalyser`, handle `ConditionalUnboundType`:
+`ConditionalType` contains unanalyzed types initially. The `TypeAnalyser` visitor
+analyzes the nested types:
 
 ```python
-def visit_conditional_unbound_type(self, t: ConditionalUnboundType) -> Type:
-    """Analyze X if Sub[T, Base] else Y"""
-    # Analyze all three parts
+def visit_conditional_type(self, t: ConditionalType) -> Type:
+    """Analyze the components of a conditional type."""
     condition = self.anal_type(t.condition)
     true_type = self.anal_type(t.true_type)
     false_type = self.anal_type(t.false_type)
@@ -1529,10 +1502,10 @@ Port examples from the PEP:
 - `test-data/unit/check-typelevel-*.test` - Test data
 
 ### Modified Files
-- `mypy/types.py` - Add `ComputedType` base class, `TypeOperatorType`, `ConditionalType`, `TypeForComprehension`, `ConditionalUnboundType`
-- `mypy/type_visitor.py` - Add `visit_type_operator_type`, `visit_conditional_type`, `visit_type_for_comprehension`, `visit_conditional_unbound_type`
-- `mypy/fastparse.py` - Extend `expr_to_unanalyzed_type()` to handle `IfExpr` for conditional types
-- `mypy/typeanal.py` - Detect `@_type_operator` classes, construct `TypeOperatorType`, analyze `ConditionalUnboundType`
+- `mypy/types.py` - Add `ComputedType` base class, `TypeOperatorType`, `ConditionalType`, `TypeForComprehension`
+- `mypy/type_visitor.py` - Add `visit_type_operator_type`, `visit_conditional_type`, `visit_type_for_comprehension`
+- `mypy/fastparse.py` - Extend `expr_to_unanalyzed_type()` to handle `IfExpr` → `ConditionalType`
+- `mypy/typeanal.py` - Detect `@_type_operator` classes, construct `TypeOperatorType`, analyze `ConditionalType`
 - `mypy/typeops.py` - Extend `get_proper_type()` to expand type operators
 - `mypy/expandtype.py` - Handle type variable substitution in type operators
 - `mypy/subtypes.py` - Subtype rules for unevaluated type operators
