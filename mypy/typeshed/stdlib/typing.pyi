@@ -1235,13 +1235,20 @@ class Param(Generic[_Name, _Type, _Quals]):
     typ: _Type
     quals: _Quals
 
-# Note: Convenience aliases for Param like PosParam, NamedParam, etc.
-# require Python 3.12+ type statement syntax and are not defined here.
-# Users can write the full Param[N, T, Literal["positional"]] types directly.
+
+_N = TypeVar("_N", bound=str)
+
+# Convenience aliases for Param
+PosParam: typing_extensions.TypeAlias = Param[_N, _T, Literal["positional"]]
+PosDefaultParam: typing_extensions.TypeAlias = Param[_N, _T, Literal["positional", "default"]]
+DefaultParam: typing_extensions.TypeAlias = Param[_N, _T, Literal["default"]]
+NamedParam: typing_extensions.TypeAlias = Param[_N, _T, Literal["keyword"]]
+NamedDefaultParam: typing_extensions.TypeAlias = Param[_N, _T, Literal["keyword", "default"]]
+ArgsParam: typing_extensions.TypeAlias = Param[None, _T, Literal["*"]]
+KwargsParam: typing_extensions.TypeAlias = Param[None, _T, Literal["**"]]
 
 # --- Type Introspection Operators ---
 
-_T = TypeVar("_T")
 _Base = TypeVar("_Base")
 _Idx = TypeVar("_Idx")
 _S = TypeVar("_S")
@@ -1304,12 +1311,17 @@ class FromUnion(Generic[_T]):
 
     ...
 
-# --- Member/Param Accessors ---
-# Note: GetName, GetType, GetQuals, GetInit, GetDefiner are generic type aliases
-# that require Python 3.12+ type statement syntax. Users can use GetAttr directly:
-#   GetAttr[T, Literal["name"]]  instead of GetName[T]
-#   GetAttr[T, Literal["typ"]]   instead of GetType[T]
-#   etc.
+# --- Member/Param Accessors (defined as type aliases using GetAttr) ---
+
+_MP = TypeVar("_MP", bound=Member[Any, Any, Any, Any, Any] | Param[Any, Any, Any])
+_M = TypeVar("_M", bound=Member[Any, Any, Any, Any, Any])
+
+
+GetName: typing_extensions.TypeAlias = GetAttr[_MP, Literal["name"]]
+GetType: typing_extensions.TypeAlias = GetAttr[_MP, Literal["typ"]]
+GetQuals: typing_extensions.TypeAlias = GetAttr[_MP, Literal["quals"]]
+GetInit: typing_extensions.TypeAlias = GetAttr[_M, Literal["init"]]
+GetDefiner: typing_extensions.TypeAlias = GetAttr[_M, Literal["definer"]]
 
 # --- Type Construction Operators ---
 

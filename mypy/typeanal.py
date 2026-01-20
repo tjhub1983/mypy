@@ -1753,6 +1753,13 @@ class TypeAnalyser(SyntheticTypeVisitor[Type], TypeAnalyzerPluginInterface):
             and arg.original_str_expr is not None
         ):
             assert arg.original_str_fallback is not None
+            # XXX: Since adding some Literals to typing.pyi, sometimes
+            # they get processed before builtins.str is available.
+            # Fix this by deferring, I guess.
+            if self.api.lookup_fully_qualified_or_none(arg.original_str_fallback) is None:
+                self.api.defer()
+                return None
+
             return [
                 LiteralType(
                     value=arg.original_str_expr,
@@ -1808,6 +1815,14 @@ class TypeAnalyser(SyntheticTypeVisitor[Type], TypeAnalyzerPluginInterface):
                 return None
 
             # Remap bytes and unicode into the appropriate type for the correct Python version
+
+            # XXX: Since adding some Literals to typing.pyi, sometimes
+            # they get processed before builtins.str is available.
+            # Fix this by deferring, I guess.
+            if self.api.lookup_fully_qualified_or_none(arg.base_type_name) is None:
+                self.api.defer()
+                return None
+
             fallback = self.named_type(arg.base_type_name)
             assert isinstance(fallback, Instance)
             return [LiteralType(arg.literal_value, fallback, line=arg.line, column=arg.column)]
