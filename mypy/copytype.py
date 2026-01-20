@@ -5,6 +5,7 @@ from typing import Any, cast
 from mypy.types import (
     AnyType,
     CallableType,
+    ConditionalType,
     DeletedType,
     ErasedType,
     Instance,
@@ -18,6 +19,8 @@ from mypy.types import (
     TupleType,
     TypeAliasType,
     TypedDictType,
+    TypeForComprehension,
+    TypeOperatorType,
     TypeType,
     TypeVarTupleType,
     TypeVarType,
@@ -124,6 +127,15 @@ class TypeShallowCopier(TypeVisitor[ProperType]):
         return self.copy_common(t, TypeType(cast(Any, t.item), is_type_form=t.is_type_form))
 
     def visit_type_alias_type(self, t: TypeAliasType) -> ProperType:
+        assert False, "only ProperTypes supported"
+
+    def visit_type_operator_type(self, t: TypeOperatorType) -> ProperType:
+        assert False, "only ProperTypes supported"
+
+    def visit_conditional_type(self, t: ConditionalType) -> ProperType:
+        assert False, "only ProperTypes supported"
+
+    def visit_type_for_comprehension(self, t: TypeForComprehension) -> ProperType:
         assert False, "only ProperTypes supported"
 
     def copy_common(self, t: ProperType, t2: ProperType) -> ProperType:

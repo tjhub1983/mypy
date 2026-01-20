@@ -75,6 +75,7 @@ from mypy.types import (
     BoolTypeQuery,
     CallableArgument,
     CallableType,
+    ConditionalType,
     DeletedType,
     EllipsisType,
     ErasedType,
@@ -97,8 +98,10 @@ from mypy.types import (
     Type,
     TypeAliasType,
     TypedDictType,
+    TypeForComprehension,
     TypeList,
     TypeOfAny,
+    TypeOperatorType,
     TypeQuery,
     TypeType,
     TypeVarId,
@@ -1110,6 +1113,18 @@ class TypeAnalyser(SyntheticTypeVisitor[Type], TypeAnalyzerPluginInterface):
 
     def visit_type_alias_type(self, t: TypeAliasType) -> Type:
         # TODO: should we do something here?
+        return t
+
+    def visit_type_operator_type(self, t: TypeOperatorType) -> Type:
+        # Type operators are analyzed elsewhere
+        return t
+
+    def visit_conditional_type(self, t: ConditionalType) -> Type:
+        # Conditional types are analyzed elsewhere
+        return t
+
+    def visit_type_for_comprehension(self, t: TypeForComprehension) -> Type:
+        # Type comprehensions are analyzed elsewhere
         return t
 
     def visit_type_var(self, t: TypeVarType) -> Type:
@@ -2711,6 +2726,19 @@ class FindTypeVarVisitor(SyntheticTypeVisitor[None]):
 
     def visit_type_alias_type(self, t: TypeAliasType) -> None:
         self.process_types(t.args)
+
+    def visit_type_operator_type(self, t: TypeOperatorType) -> None:
+        self.process_types(t.args)
+
+    def visit_conditional_type(self, t: ConditionalType) -> None:
+        t.condition.accept(self)
+        t.true_type.accept(self)
+        t.false_type.accept(self)
+
+    def visit_type_for_comprehension(self, t: TypeForComprehension) -> None:
+        t.element_expr.accept(self)
+        t.iter_type.accept(self)
+        self.process_types(t.conditions)
 
     def process_types(self, types: list[Type] | tuple[Type, ...]) -> None:
         # Redundant type check helps mypyc.

@@ -8,6 +8,7 @@ from mypy.types import (
     AnyType,
     CallableArgument,
     CallableType,
+    ConditionalType,
     DeletedType,
     EllipsisType,
     ErasedType,
@@ -25,7 +26,9 @@ from mypy.types import (
     Type,
     TypeAliasType,
     TypedDictType,
+    TypeForComprehension,
     TypeList,
+    TypeOperatorType,
     TypeType,
     TypeVarTupleType,
     TypeVarType,
@@ -141,6 +144,19 @@ class TypeTraverserVisitor(SyntheticTypeVisitor[None]):
 
     def visit_unpack_type(self, t: UnpackType, /) -> None:
         t.type.accept(self)
+
+    def visit_type_operator_type(self, t: TypeOperatorType, /) -> None:
+        self.traverse_type_list(t.args)
+
+    def visit_conditional_type(self, t: ConditionalType, /) -> None:
+        t.condition.accept(self)
+        t.true_type.accept(self)
+        t.false_type.accept(self)
+
+    def visit_type_for_comprehension(self, t: TypeForComprehension, /) -> None:
+        t.element_expr.accept(self)
+        t.iter_type.accept(self)
+        self.traverse_type_list(t.conditions)
 
     # Helpers
 

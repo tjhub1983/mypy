@@ -1235,14 +1235,9 @@ class Param(Generic[_Name, _Type, _Quals]):
     typ: _Type
     quals: _Quals
 
-# Convenience aliases for Param
-type PosParam[N, T] = Param[N, T, Literal["positional"]]
-type PosDefaultParam[N, T] = Param[N, T, Literal["positional", "default"]]
-type DefaultParam[N, T] = Param[N, T, Literal["default"]]
-type NamedParam[N, T] = Param[N, T, Literal["keyword"]]
-type NamedDefaultParam[N, T] = Param[N, T, Literal["keyword", "default"]]
-type ArgsParam[T] = Param[None, T, Literal["*"]]
-type KwargsParam[T] = Param[None, T, Literal["**"]]
+# Note: Convenience aliases for Param like PosParam, NamedParam, etc.
+# require Python 3.12+ type statement syntax and are not defined here.
+# Users can write the full Param[N, T, Literal["positional"]] types directly.
 
 # --- Type Introspection Operators ---
 
@@ -1309,13 +1304,12 @@ class FromUnion(Generic[_T]):
 
     ...
 
-# --- Member/Param Accessors (defined as type aliases using GetAttr) ---
-
-type GetName[T: Member[Any, Any, Any, Any, Any] | Param[Any, Any, Any]] = GetAttr[T, Literal["name"]]
-type GetType[T: Member[Any, Any, Any, Any, Any] | Param[Any, Any, Any]] = GetAttr[T, Literal["typ"]]
-type GetQuals[T: Member[Any, Any, Any, Any, Any] | Param[Any, Any, Any]] = GetAttr[T, Literal["quals"]]
-type GetInit[T: Member[Any, Any, Any, Any, Any]] = GetAttr[T, Literal["init"]]
-type GetDefiner[T: Member[Any, Any, Any, Any, Any]] = GetAttr[T, Literal["definer"]]
+# --- Member/Param Accessors ---
+# Note: GetName, GetType, GetQuals, GetInit, GetDefiner are generic type aliases
+# that require Python 3.12+ type statement syntax. Users can use GetAttr directly:
+#   GetAttr[T, Literal["name"]]  instead of GetName[T]
+#   GetAttr[T, Literal["typ"]]   instead of GetType[T]
+#   etc.
 
 # --- Type Construction Operators ---
 

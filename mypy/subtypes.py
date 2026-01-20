@@ -41,6 +41,7 @@ from mypy.types import (
     TYPED_NAMEDTUPLE_NAMES,
     AnyType,
     CallableType,
+    ConditionalType,
     DeletedType,
     ErasedType,
     FormalArgument,
@@ -58,7 +59,9 @@ from mypy.types import (
     Type,
     TypeAliasType,
     TypedDictType,
+    TypeForComprehension,
     TypeOfAny,
+    TypeOperatorType,
     TypeType,
     TypeVarTupleType,
     TypeVarType,
@@ -1159,6 +1162,15 @@ class SubtypeVisitor(TypeVisitor[bool]):
 
     def visit_type_alias_type(self, left: TypeAliasType) -> bool:
         assert False, f"This should be never called, got {left}"
+
+    def visit_type_operator_type(self, left: TypeOperatorType) -> bool:
+        assert False, f"Computed types should be expanded before subtype check, got {left}"
+
+    def visit_conditional_type(self, left: ConditionalType) -> bool:
+        assert False, f"Computed types should be expanded before subtype check, got {left}"
+
+    def visit_type_for_comprehension(self, left: TypeForComprehension) -> bool:
+        assert False, f"Computed types should be expanded before subtype check, got {left}"
 
 
 T = TypeVar("T", bound=Type)

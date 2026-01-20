@@ -147,6 +147,7 @@ from mypy.typeops import bind_self
 from mypy.types import (
     AnyType,
     CallableType,
+    ConditionalType,
     DeletedType,
     ErasedType,
     FunctionLike,
@@ -162,7 +163,9 @@ from mypy.types import (
     Type,
     TypeAliasType,
     TypedDictType,
+    TypeForComprehension,
     TypeOfAny,
+    TypeOperatorType,
     TypeType,
     TypeVarTupleType,
     TypeVarType,
@@ -1095,6 +1098,29 @@ class TypeTriggersVisitor(TypeVisitor[list[str]]):
         triggers = []
         for item in typ.items:
             triggers.extend(self.get_type_triggers(item))
+        return triggers
+
+    def visit_type_operator_type(self, typ: TypeOperatorType) -> list[str]:
+        triggers = []
+        if typ.type:
+            triggers.append(make_trigger(typ.type.fullname))
+        for arg in typ.args:
+            triggers.extend(self.get_type_triggers(arg))
+        return triggers
+
+    def visit_conditional_type(self, typ: ConditionalType) -> list[str]:
+        triggers = []
+        triggers.extend(self.get_type_triggers(typ.condition))
+        triggers.extend(self.get_type_triggers(typ.true_type))
+        triggers.extend(self.get_type_triggers(typ.false_type))
+        return triggers
+
+    def visit_type_for_comprehension(self, typ: TypeForComprehension) -> list[str]:
+        triggers = []
+        triggers.extend(self.get_type_triggers(typ.element_expr))
+        triggers.extend(self.get_type_triggers(typ.iter_type))
+        for cond in typ.conditions:
+            triggers.extend(self.get_type_triggers(cond))
         return triggers
 
 

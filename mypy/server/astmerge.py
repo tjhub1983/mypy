@@ -84,6 +84,7 @@ from mypy.types import (
     AnyType,
     CallableArgument,
     CallableType,
+    ConditionalType,
     DeletedType,
     EllipsisType,
     ErasedType,
@@ -101,7 +102,9 @@ from mypy.types import (
     Type,
     TypeAliasType,
     TypedDictType,
+    TypeForComprehension,
     TypeList,
+    TypeOperatorType,
     TypeType,
     TypeVarTupleType,
     TypeVarType,
@@ -538,6 +541,21 @@ class TypeReplaceVisitor(SyntheticTypeVisitor[None]):
     def visit_union_type(self, typ: UnionType) -> None:
         for item in typ.items:
             item.accept(self)
+
+    def visit_type_operator_type(self, typ: TypeOperatorType) -> None:
+        for arg in typ.args:
+            arg.accept(self)
+
+    def visit_conditional_type(self, typ: ConditionalType) -> None:
+        typ.condition.accept(self)
+        typ.true_type.accept(self)
+        typ.false_type.accept(self)
+
+    def visit_type_for_comprehension(self, typ: TypeForComprehension) -> None:
+        typ.element_expr.accept(self)
+        typ.iter_type.accept(self)
+        for c in typ.conditions:
+            c.accept(self)
 
     def visit_placeholder_type(self, t: PlaceholderType) -> None:
         for item in t.args:

@@ -3976,8 +3976,9 @@ def get_proper_type(typ: Type | None) -> ProperType | None:
     while True:
         if isinstance(typ, TypeAliasType):
             typ = typ._expand_once()
-        elif isinstance(typ, ComputedType):
+        elif isinstance(typ, ComputedType):  # type: ignore[misc]
             # Handles TypeOperatorType, ConditionalType, TypeForComprehension
+            # Note: This isinstance check is intentional - this function does the expansion
             typ = typ.expand()
         else:
             break
@@ -4002,7 +4003,8 @@ def get_proper_types(
         typelist = types
         # Optimize for the common case so that we don't need to allocate anything
         if not any(
-            isinstance(t, (TypeAliasType, TypeGuardedType, ComputedType)) for t in typelist
+            isinstance(t, (TypeAliasType, TypeGuardedType, ComputedType))  # type: ignore[misc]
+            for t in typelist
         ):
             return cast("list[ProperType]", typelist)
         return [get_proper_type(t) for t in typelist]
@@ -4336,6 +4338,19 @@ class TypeStrVisitor(SyntheticTypeVisitor[str]):
         if not self.options.reveal_verbose_types:
             return f"*{t.type.accept(self)}"
         return f"Unpack[{t.type.accept(self)}]"
+
+    def visit_type_operator_type(self, t: TypeOperatorType, /) -> str:
+        name = t.type.fullname if t.type else "<unfixed>"
+        return f"{name}[{self.list_str(t.args)}]"
+
+    def visit_conditional_type(self, t: ConditionalType, /) -> str:
+        return f"({t.true_type.accept(self)} if {t.condition.accept(self)} else {t.false_type.accept(self)})"
+
+    def visit_type_for_comprehension(self, t: TypeForComprehension, /) -> str:
+        conditions = ""
+        if t.conditions:
+            conditions = " if " + " if ".join(c.accept(self) for c in t.conditions)
+        return f"*[{t.element_expr.accept(self)} for {t.iter_var} in {t.iter_type.accept(self)}{conditions}]"
 
     def list_str(self, a: Iterable[Type], *, use_or_syntax: bool = False) -> str:
         """Convert items of an array to strings (pretty-print types)

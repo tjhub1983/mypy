@@ -78,6 +78,7 @@ from mypy.state import state
 from mypy.types import (
     AnyType,
     CallableType,
+    ConditionalType,
     DeletedType,
     ErasedType,
     Instance,
@@ -91,6 +92,8 @@ from mypy.types import (
     Type,
     TypeAliasType,
     TypedDictType,
+    TypeForComprehension,
+    TypeOperatorType,
     TypeType,
     TypeVarId,
     TypeVarLikeType,
@@ -523,6 +526,27 @@ class SnapshotTypeVisitor(TypeVisitor[SnapshotItem]):
     def visit_type_alias_type(self, typ: TypeAliasType) -> SnapshotItem:
         assert typ.alias is not None
         return ("TypeAliasType", typ.alias.fullname, snapshot_types(typ.args))
+
+    def visit_type_operator_type(self, typ: TypeOperatorType) -> SnapshotItem:
+        name = typ.type.fullname if typ.type else "<unfixed>"
+        return ("TypeOperatorType", name, snapshot_types(typ.args))
+
+    def visit_conditional_type(self, typ: ConditionalType) -> SnapshotItem:
+        return (
+            "ConditionalType",
+            snapshot_type(typ.condition),
+            snapshot_type(typ.true_type),
+            snapshot_type(typ.false_type),
+        )
+
+    def visit_type_for_comprehension(self, typ: TypeForComprehension) -> SnapshotItem:
+        return (
+            "TypeForComprehension",
+            snapshot_type(typ.element_expr),
+            typ.iter_var,
+            snapshot_type(typ.iter_type),
+            snapshot_types(typ.conditions),
+        )
 
 
 def snapshot_untyped_signature(func: OverloadedFuncDef | FuncItem) -> SymbolSnapshot:
