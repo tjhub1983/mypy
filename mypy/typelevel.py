@@ -9,6 +9,7 @@ Note: Conditional types are now represented as _Cond[...] TypeOperatorType.
 
 from __future__ import annotations
 
+import itertools
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Final
@@ -23,10 +24,9 @@ from mypy.types import (
     TupleType,
     Type,
     TypeForComprehension,
-    TypeAliasType,
     TypeOfAny,
-    TypeVarType,
     TypeOperatorType,
+    TypeVarType,
     UninhabitedType,
     UnionType,
     get_proper_type,
@@ -98,6 +98,55 @@ def register_operator(
         return func
 
     return decorator
+
+
+def lift_over_unions(
+    func: Callable[[TypeLevelEvaluator, TypeOperatorType], Type],
+) -> Callable[[TypeLevelEvaluator, TypeOperatorType], Type]:
+    """Decorator that lifts an operator to work over union types.
+
+    If any argument is a union type, the operator is applied to each
+    combination of union elements and the results are combined into a union.
+
+    For example, Concat[Literal['a'] | Literal['b'], Literal['c']]
+    becomes Literal['ac'] | Literal['bc'].
+    """
+
+    def wrapper(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+        # Expand each argument, collecting union alternatives
+        expanded_args: list[list[Type]] = []
+        for arg in typ.args:
+            proper = get_proper_type(arg)
+            if isinstance(proper, UnionType):
+                expanded_args.append(list(proper.items))
+            else:
+                expanded_args.append([arg])
+
+        # Generate all combinations
+        combinations = list(itertools.product(*expanded_args))
+
+        # If there's only one combination, just call the function directly
+        if len(combinations) == 1:
+            return func(evaluator, typ)
+
+        # Apply the operator to each combination
+        results: list[Type] = []
+        for combo in combinations:
+            new_typ = typ.copy_modified(args=list(combo))
+            result = func(evaluator, new_typ)
+            # Don't include Never in unions
+            # XXX: or should we get_proper_type again??
+            if not (isinstance(result, ProperType) and isinstance(result, UninhabitedType)):
+                results.append(result)
+
+        if not results:
+            return UninhabitedType()
+        elif len(results) == 1:
+            return results[0]
+        else:
+            return UnionType.make_union(results)
+
+    return wrapper
 
 
 class EvaluationStuck(Exception):
@@ -218,7 +267,11 @@ def extract_literal_bool(typ: Type) -> bool | None:
 def extract_literal_int(typ: Type) -> int | None:
     """Extract int value from LiteralType."""
     typ = get_proper_type(typ)
-    if isinstance(typ, LiteralType) and isinstance(typ.value, int) and not isinstance(typ.value, bool):
+    if (
+        isinstance(typ, LiteralType)
+        and isinstance(typ.value, int)
+        and not isinstance(typ.value, bool)
+    ):
         return typ.value
     return None
 
@@ -235,6 +288,7 @@ def extract_literal_string(typ: Type) -> str | None:
 
 
 @register_operator("typing.GetArg")
+@lift_over_unions
 def _eval_get_arg(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     """Evaluate GetArg[T, Base, Idx] - get type argument at index from T as Base."""
     if len(typ.args) != 3:
@@ -259,6 +313,7 @@ def _eval_get_arg(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
 
 
 @register_operator("typing.GetArgs")
+@lift_over_unions
 def _eval_get_args(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     """Evaluate GetArgs[T, Base] -> tuple of all type args from T as Base."""
     if len(typ.args) != 2:
@@ -292,6 +347,7 @@ def _eval_from_union(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Ty
 
 
 @register_operator("typing.GetAttr")
+@lift_over_unions
 def _eval_get_attr(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     """Evaluate GetAttr[T, Name] - get attribute type from T."""
     if len(typ.args) != 2:
@@ -317,6 +373,7 @@ def _eval_get_attr(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type
 
 
 @register_operator("typing.Slice")
+@lift_over_unions
 def _eval_slice(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     """Evaluate Slice[S, Start, End] - slice a literal string."""
     if len(typ.args) != 3:
@@ -350,6 +407,7 @@ def _eval_slice(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
 
 
 @register_operator("typing.Concat")
+@lift_over_unions
 def _eval_concat(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     """Evaluate Concat[S1, S2] - concatenate two literal strings."""
     if len(typ.args) != 2:
@@ -365,6 +423,7 @@ def _eval_concat(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
 
 
 @register_operator("typing.Uppercase")
+@lift_over_unions
 def _eval_uppercase(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     """Evaluate Uppercase[S] - convert literal string to uppercase."""
     if len(typ.args) != 1:
@@ -378,6 +437,7 @@ def _eval_uppercase(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Typ
 
 
 @register_operator("typing.Lowercase")
+@lift_over_unions
 def _eval_lowercase(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     """Evaluate Lowercase[S] - convert literal string to lowercase."""
     if len(typ.args) != 1:
@@ -391,6 +451,7 @@ def _eval_lowercase(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Typ
 
 
 @register_operator("typing.Capitalize")
+@lift_over_unions
 def _eval_capitalize(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     """Evaluate Capitalize[S] - capitalize first character of literal string."""
     if len(typ.args) != 1:
@@ -404,6 +465,7 @@ def _eval_capitalize(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Ty
 
 
 @register_operator("typing.Uncapitalize")
+@lift_over_unions
 def _eval_uncapitalize(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     """Evaluate Uncapitalize[S] - lowercase first character of literal string."""
     if len(typ.args) != 1:
@@ -421,6 +483,7 @@ def _eval_uncapitalize(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> 
 
 
 @register_operator("typing.Length")
+@lift_over_unions
 def _eval_length(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     """Evaluate Length[T] -> Literal[int] for tuple length."""
     if len(typ.args) != 1:
@@ -440,7 +503,7 @@ def _eval_length(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
 # --- Helper Functions ---
 
 
-def get_type_args_for_base(instance: Instance, base_type: "TypeInfo") -> list[Type] | None:
+def get_type_args_for_base(instance: Instance, base_type: TypeInfo) -> list[Type] | None:
     """Get type args when viewing instance as base class.
 
     Returns None if instance is not a subtype of base_type.
@@ -457,7 +520,7 @@ def get_type_args_for_base(instance: Instance, base_type: "TypeInfo") -> list[Ty
     return None
 
 
-def map_type_args_to_base(instance: Instance, base: "TypeInfo") -> list[Type]:
+def map_type_args_to_base(instance: Instance, base: TypeInfo) -> list[Type]:
     """Map instance's type args through inheritance chain to base."""
     from mypy.expandtype import expand_type_by_instance
 

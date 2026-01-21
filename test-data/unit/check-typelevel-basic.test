@@ -207,11 +207,18 @@ reveal_type(y)  # N: Revealed type is "tuple[builtins.int]"
 [typing fixtures/typing-full.pyi]
 
 [case testTypeOperatorStringConcat]
+# flags: --python-version 3.10
 # Test string concatenation operator
 from typing import Concat, Literal
 
 x: Concat[Literal["hello"], Literal["world"]]
 reveal_type(x)  # N: Revealed type is "Literal['helloworld']"
+
+y: Concat[Literal['a'] | Literal['b'], Literal['c'] | Literal['d']]
+reveal_type(y)  # N: Revealed type is "Literal['ac'] | Literal['ad'] | Literal['bc'] | Literal['bd']"
+
+z: Concat[Literal['a', 'b'], Literal['c', 'd']]
+reveal_type(z)  # N: Revealed type is "Literal['ac'] | Literal['ad'] | Literal['bc'] | Literal['bd']"
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
