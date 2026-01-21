@@ -1351,7 +1351,20 @@ class NewTypedDict(Generic[Unpack[_Ts]] if sys.version_info >= (3, 11) else Gene
 class IsSub(Generic[_T, _Base]):
     """
     Type-level subtype check. Evaluates to a type-level boolean.
-    Used in conditional type expressions: `X if IsSub[T, Base] else Y`
+    Used in conditional type expressions: `_Cond[IsSub[T, Base], X, Y]`
+    """
+
+    ...
+
+_TrueType = TypeVar("_TrueType")
+_FalseType = TypeVar("_FalseType")
+
+@_type_operator
+class _Cond(Generic[_T, _TrueType, _FalseType]):
+    """
+    Type-level conditional expression.
+    _Cond[IsSub[T, Base], TrueType, FalseType] evaluates to TrueType if T is a subtype of Base,
+    otherwise FalseType.
     """
 
     ...

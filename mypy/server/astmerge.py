@@ -84,7 +84,6 @@ from mypy.types import (
     AnyType,
     CallableArgument,
     CallableType,
-    ConditionalType,
     DeletedType,
     EllipsisType,
     ErasedType,
@@ -545,11 +544,6 @@ class TypeReplaceVisitor(SyntheticTypeVisitor[None]):
     def visit_type_operator_type(self, typ: TypeOperatorType) -> None:
         for arg in typ.args:
             arg.accept(self)
-
-    def visit_conditional_type(self, typ: ConditionalType) -> None:
-        typ.condition.accept(self)
-        typ.true_type.accept(self)
-        typ.false_type.accept(self)
 
     def visit_type_for_comprehension(self, typ: TypeForComprehension) -> None:
         typ.element_expr.accept(self)

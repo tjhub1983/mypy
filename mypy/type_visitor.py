@@ -23,7 +23,6 @@ from mypy.types import (
     AnyType,
     CallableArgument,
     CallableType,
-    ConditionalType,
     DeletedType,
     EllipsisType,
     ErasedType,
@@ -151,10 +150,6 @@ class TypeVisitor(Generic[T]):
 
     @abstractmethod
     def visit_type_operator_type(self, t: TypeOperatorType, /) -> T:
-        pass
-
-    @abstractmethod
-    def visit_conditional_type(self, t: ConditionalType, /) -> T:
         pass
 
     @abstractmethod
@@ -358,13 +353,6 @@ class TypeTranslator(TypeVisitor[Type]):
     def visit_type_operator_type(self, t: TypeOperatorType, /) -> Type:
         return t.copy_modified(args=self.translate_type_list(t.args))
 
-    def visit_conditional_type(self, t: ConditionalType, /) -> Type:
-        return t.copy_modified(
-            condition=t.condition.accept(self),
-            true_type=t.true_type.accept(self),
-            false_type=t.false_type.accept(self),
-        )
-
     def visit_type_for_comprehension(self, t: TypeForComprehension, /) -> Type:
         return t.copy_modified(
             element_expr=t.element_expr.accept(self),
@@ -490,9 +478,6 @@ class TypeQuery(SyntheticTypeVisitor[T]):
 
     def visit_type_operator_type(self, t: TypeOperatorType, /) -> T:
         return self.query_types(t.args)
-
-    def visit_conditional_type(self, t: ConditionalType, /) -> T:
-        return self.query_types([t.condition, t.true_type, t.false_type])
 
     def visit_type_for_comprehension(self, t: TypeForComprehension, /) -> T:
         return self.query_types([t.element_expr, t.iter_type] + t.conditions)
@@ -640,9 +625,6 @@ class BoolTypeQuery(SyntheticTypeVisitor[bool]):
 
     def visit_type_operator_type(self, t: TypeOperatorType, /) -> bool:
         return self.query_types(t.args)
-
-    def visit_conditional_type(self, t: ConditionalType, /) -> bool:
-        return self.query_types([t.condition, t.true_type, t.false_type])
 
     def visit_type_for_comprehension(self, t: TypeForComprehension, /) -> bool:
         return self.query_types([t.element_expr, t.iter_type] + t.conditions)

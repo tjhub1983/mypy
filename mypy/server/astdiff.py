@@ -78,7 +78,6 @@ from mypy.state import state
 from mypy.types import (
     AnyType,
     CallableType,
-    ConditionalType,
     DeletedType,
     ErasedType,
     Instance,
@@ -530,14 +529,6 @@ class SnapshotTypeVisitor(TypeVisitor[SnapshotItem]):
     def visit_type_operator_type(self, typ: TypeOperatorType) -> SnapshotItem:
         name = typ.type.fullname if typ.type else "<unfixed>"
         return ("TypeOperatorType", name, snapshot_types(typ.args))
-
-    def visit_conditional_type(self, typ: ConditionalType) -> SnapshotItem:
-        return (
-            "ConditionalType",
-            snapshot_type(typ.condition),
-            snapshot_type(typ.true_type),
-            snapshot_type(typ.false_type),
-        )
 
     def visit_type_for_comprehension(self, typ: TypeForComprehension) -> SnapshotItem:
         return (

@@ -24,7 +24,6 @@ from mypy.types import (
     TUPLE_LIKE_INSTANCE_NAMES,
     AnyType,
     CallableType,
-    ConditionalType,
     DeletedType,
     ErasedType,
     Instance,
@@ -1432,9 +1431,6 @@ class ConstraintBuilderVisitor(TypeVisitor[list[Constraint]]):
         assert False, f"This should be never called, got {template}"
 
     def visit_type_operator_type(self, template: TypeOperatorType) -> list[Constraint]:
-        assert False, f"Computed types should be expanded before constraint inference, got {template}"
-
-    def visit_conditional_type(self, template: ConditionalType) -> list[Constraint]:
         assert False, f"Computed types should be expanded before constraint inference, got {template}"
 
     def visit_type_for_comprehension(self, template: TypeForComprehension) -> list[Constraint]:

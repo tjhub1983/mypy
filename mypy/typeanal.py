@@ -75,7 +75,6 @@ from mypy.types import (
     BoolTypeQuery,
     CallableArgument,
     CallableType,
-    ConditionalType,
     DeletedType,
     EllipsisType,
     ErasedType,
@@ -1117,10 +1116,6 @@ class TypeAnalyser(SyntheticTypeVisitor[Type], TypeAnalyzerPluginInterface):
 
     def visit_type_operator_type(self, t: TypeOperatorType) -> Type:
         # Type operators are analyzed elsewhere
-        return t
-
-    def visit_conditional_type(self, t: ConditionalType) -> Type:
-        # Conditional types are analyzed elsewhere
         return t
 
     def visit_type_for_comprehension(self, t: TypeForComprehension) -> Type:
@@ -2744,11 +2739,6 @@ class FindTypeVarVisitor(SyntheticTypeVisitor[None]):
 
     def visit_type_operator_type(self, t: TypeOperatorType) -> None:
         self.process_types(t.args)
-
-    def visit_conditional_type(self, t: ConditionalType) -> None:
-        t.condition.accept(self)
-        t.true_type.accept(self)
-        t.false_type.accept(self)
 
     def visit_type_for_comprehension(self, t: TypeForComprehension) -> None:
         t.element_expr.accept(self)

@@ -21,7 +21,6 @@ from mypy.types import (
     TUPLE_LIKE_INSTANCE_NAMES,
     AnyType,
     CallableType,
-    ConditionalType,
     DeletedType,
     ErasedType,
     FunctionLike,
@@ -1139,9 +1138,6 @@ class TypeMeetVisitor(TypeVisitor[ProperType]):
         assert False, f"This should be never called, got {t}"
 
     def visit_type_operator_type(self, t: TypeOperatorType) -> ProperType:
-        assert False, f"Computed types should be expanded before meet, got {t}"
-
-    def visit_conditional_type(self, t: ConditionalType) -> ProperType:
         assert False, f"Computed types should be expanded before meet, got {t}"
 
     def visit_type_for_comprehension(self, t: TypeForComprehension) -> ProperType:

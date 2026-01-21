@@ -24,7 +24,6 @@ from mypy.types import (
     NOT_READY,
     AnyType,
     CallableType,
-    ConditionalType,
     Instance,
     LiteralType,
     Overloaded,
@@ -382,11 +381,6 @@ class TypeFixer(TypeVisitor[None]):
     def visit_type_operator_type(self, t: TypeOperatorType) -> None:
         for a in t.args:
             a.accept(self)
-
-    def visit_conditional_type(self, t: ConditionalType) -> None:
-        t.condition.accept(self)
-        t.true_type.accept(self)
-        t.false_type.accept(self)
 
     def visit_type_for_comprehension(self, t: TypeForComprehension) -> None:
         t.element_expr.accept(self)

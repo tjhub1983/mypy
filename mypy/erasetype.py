@@ -7,7 +7,6 @@ from mypy.nodes import ARG_STAR, ARG_STAR2
 from mypy.types import (
     AnyType,
     CallableType,
-    ConditionalType,
     DeletedType,
     ErasedType,
     Instance,
@@ -145,9 +144,6 @@ class EraseTypeVisitor(TypeVisitor[ProperType]):
         raise RuntimeError("Type aliases should be expanded before accepting this visitor")
 
     def visit_type_operator_type(self, t: TypeOperatorType) -> ProperType:
-        raise RuntimeError("Computed types should be expanded before accepting this visitor")
-
-    def visit_conditional_type(self, t: ConditionalType) -> ProperType:
         raise RuntimeError("Computed types should be expanded before accepting this visitor")
 
     def visit_type_for_comprehension(self, t: TypeForComprehension) -> ProperType:

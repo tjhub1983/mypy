@@ -174,11 +174,6 @@ class TypeIndirectionVisitor(TypeVisitor[None]):
             self.modules.add(t.type.module_name)
         self._visit_type_list(t.args)
 
-    def visit_conditional_type(self, t: types.ConditionalType) -> None:
-        self._visit(t.condition)
-        self._visit(t.true_type)
-        self._visit(t.false_type)
-
     def visit_type_for_comprehension(self, t: types.TypeForComprehension) -> None:
         self._visit(t.element_expr)
         self._visit(t.iter_type)

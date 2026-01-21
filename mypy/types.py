@@ -470,8 +470,7 @@ class ComputedType(Type):
     that produces a concrete type.
 
     Subclasses:
-    - TypeOperatorType: e.g., GetArg[T, Base, 0], Members[T]
-    - ConditionalType: e.g., X if IsSub[T, Base] else Y
+    - TypeOperatorType: e.g., GetArg[T, Base, 0], Members[T], _Cond[IsSub[T, Base], X, Y]
     - TypeForComprehension: e.g., *[Expr for x in Iter[T] if Cond]
     """
 
@@ -575,99 +574,6 @@ class TypeOperatorType(ComputedType):
         typ.type_ref = read_str(data)
         assert read_tag(data) == END_TAG
         return typ
-
-
-class ConditionalType(ComputedType):
-    """Represents `TrueType if IsSub[T, Base] else FalseType`.
-
-    The condition is itself a type (should be IsSub[T, Base] or boolean combination).
-    """
-
-    __slots__ = ("condition", "true_type", "false_type")
-
-    def __init__(
-        self,
-        condition: Type,  # Should be IsSub[T, Base] or boolean combination thereof
-        true_type: Type,
-        false_type: Type,
-        line: int = -1,
-        column: int = -1,
-    ) -> None:
-        super().__init__(line, column)
-        self.condition = condition
-        self.true_type = true_type
-        self.false_type = false_type
-
-    def accept(self, visitor: TypeVisitor[T]) -> T:
-        return visitor.visit_conditional_type(self)
-
-    def expand(self) -> Type:
-        """Evaluate the condition and return the appropriate branch."""
-        from mypy.typelevel import evaluate_conditional
-
-        return evaluate_conditional(self)
-
-    def __hash__(self) -> int:
-        return hash((self.condition, self.true_type, self.false_type))
-
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, ConditionalType):
-            return NotImplemented
-        return (
-            self.condition == other.condition
-            and self.true_type == other.true_type
-            and self.false_type == other.false_type
-        )
-
-    def __repr__(self) -> str:
-        return f"ConditionalType({self.true_type} if {self.condition} else {self.false_type})"
-
-    def serialize(self) -> JsonDict:
-        return {
-            ".class": "ConditionalType",
-            "condition": self.condition.serialize(),
-            "true_type": self.true_type.serialize(),
-            "false_type": self.false_type.serialize(),
-        }
-
-    @classmethod
-    def deserialize(cls, data: JsonDict) -> ConditionalType:
-        assert data[".class"] == "ConditionalType"
-        return ConditionalType(
-            deserialize_type(data["condition"]),
-            deserialize_type(data["true_type"]),
-            deserialize_type(data["false_type"]),
-        )
-
-    def copy_modified(
-        self,
-        *,
-        condition: Type | None = None,
-        true_type: Type | None = None,
-        false_type: Type | None = None,
-    ) -> ConditionalType:
-        return ConditionalType(
-            condition if condition is not None else self.condition,
-            true_type if true_type is not None else self.true_type,
-            false_type if false_type is not None else self.false_type,
-            self.line,
-            self.column,
-        )
-
-    def write(self, data: WriteBuffer) -> None:
-        write_tag(data, CONDITIONAL_TYPE)
-        self.condition.write(data)
-        self.true_type.write(data)
-        self.false_type.write(data)
-        write_tag(data, END_TAG)
-
-    @classmethod
-    def read(cls, data: ReadBuffer) -> ConditionalType:
-        condition = read_type(data)
-        true_type = read_type(data)
-        false_type = read_type(data)
-        assert read_tag(data) == END_TAG
-        return ConditionalType(condition, true_type, false_type)
 
 
 class TypeForComprehension(ComputedType):
@@ -3977,7 +3883,7 @@ def get_proper_type(typ: Type | None) -> ProperType | None:
         if isinstance(typ, TypeAliasType):
             typ = typ._expand_once()
         elif isinstance(typ, ComputedType):  # type: ignore[misc]
-            # Handles TypeOperatorType, ConditionalType, TypeForComprehension
+            # Handles TypeOperatorType, TypeForComprehension
             # Note: This isinstance check is intentional - this function does the expansion
             typ = typ.expand()
         else:
@@ -4343,9 +4249,6 @@ class TypeStrVisitor(SyntheticTypeVisitor[str]):
         name = t.type.fullname if t.type else "<unfixed>"
         return f"{name}[{self.list_str(t.args)}]"
 
-    def visit_conditional_type(self, t: ConditionalType, /) -> str:
-        return f"({t.true_type.accept(self)} if {t.condition.accept(self)} else {t.false_type.accept(self)})"
-
     def visit_type_for_comprehension(self, t: TypeForComprehension, /) -> str:
         conditions = ""
         if t.conditions:
@@ -4672,8 +4575,7 @@ ELLIPSIS_TYPE: Final[Tag] = 119  # Only valid in serialized ASTs
 RAW_EXPRESSION_TYPE: Final[Tag] = 120  # Only valid in serialized ASTs
 CALL_TYPE: Final[Tag] = 121  # Only valid in serialized ASTs
 TYPE_OPERATOR_TYPE: Final[Tag] = 122
-CONDITIONAL_TYPE: Final[Tag] = 123
-TYPE_FOR_COMPREHENSION: Final[Tag] = 124
+TYPE_FOR_COMPREHENSION: Final[Tag] = 123
 
 
 def read_type(data: ReadBuffer, tag: Tag | None = None) -> Type:
@@ -4720,8 +4622,6 @@ def read_type(data: ReadBuffer, tag: Tag | None = None) -> Type:
         return DeletedType.read(data)
     if tag == TYPE_OPERATOR_TYPE:
         return TypeOperatorType.read(data)
-    if tag == CONDITIONAL_TYPE:
-        return ConditionalType.read(data)
     if tag == TYPE_FOR_COMPREHENSION:
         return TypeForComprehension.read(data)
     assert False, f"Unknown type tag {tag}"

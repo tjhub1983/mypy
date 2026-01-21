@@ -41,7 +41,6 @@ from mypy.types import (
     TYPED_NAMEDTUPLE_NAMES,
     AnyType,
     CallableType,
-    ConditionalType,
     DeletedType,
     ErasedType,
     FormalArgument,
@@ -1164,9 +1163,6 @@ class SubtypeVisitor(TypeVisitor[bool]):
         assert False, f"This should be never called, got {left}"
 
     def visit_type_operator_type(self, left: TypeOperatorType) -> bool:
-        assert False, f"Computed types should be expanded before subtype check, got {left}"
-
-    def visit_conditional_type(self, left: ConditionalType) -> bool:
         assert False, f"Computed types should be expanded before subtype check, got {left}"
 
     def visit_type_for_comprehension(self, left: TypeForComprehension) -> bool:

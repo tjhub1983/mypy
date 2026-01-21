@@ -5,7 +5,6 @@ from typing import Any, cast
 from mypy.types import (
     AnyType,
     CallableType,
-    ConditionalType,
     DeletedType,
     ErasedType,
     Instance,
@@ -130,9 +129,6 @@ class TypeShallowCopier(TypeVisitor[ProperType]):
         assert False, "only ProperTypes supported"
 
     def visit_type_operator_type(self, t: TypeOperatorType) -> ProperType:
-        assert False, "only ProperTypes supported"
-
-    def visit_conditional_type(self, t: ConditionalType) -> ProperType:
         assert False, "only ProperTypes supported"
 
     def visit_type_for_comprehension(self, t: TypeForComprehension) -> ProperType:

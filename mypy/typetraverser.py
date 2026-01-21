@@ -8,7 +8,6 @@ from mypy.types import (
     AnyType,
     CallableArgument,
     CallableType,
-    ConditionalType,
     DeletedType,
     EllipsisType,
     ErasedType,
@@ -147,11 +146,6 @@ class TypeTraverserVisitor(SyntheticTypeVisitor[None]):
 
     def visit_type_operator_type(self, t: TypeOperatorType, /) -> None:
         self.traverse_type_list(t.args)
-
-    def visit_conditional_type(self, t: ConditionalType, /) -> None:
-        t.condition.accept(self)
-        t.true_type.accept(self)
-        t.false_type.accept(self)
 
     def visit_type_for_comprehension(self, t: TypeForComprehension, /) -> None:
         t.element_expr.accept(self)
