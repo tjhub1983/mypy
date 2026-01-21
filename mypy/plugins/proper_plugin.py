@@ -86,6 +86,9 @@ def is_special_target(right: ProperType) -> bool:
             "mypy.types.Type",
             "mypy.types.ProperType",
             "mypy.types.TypeAliasType",
+            "mypy.types.ComputedType",
+            "mypy.types.TypeOperatorType",
+            "mypy.types.TypeForComprehension",
         ):
             # Special case: things like assert isinstance(typ, ProperType) are always OK.
             return True

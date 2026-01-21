@@ -3882,9 +3882,8 @@ def get_proper_type(typ: Type | None) -> ProperType | None:
     while True:
         if isinstance(typ, TypeAliasType):
             typ = typ._expand_once()
-        elif isinstance(typ, ComputedType):  # type: ignore[misc]
+        elif isinstance(typ, ComputedType):
             # Handles TypeOperatorType, TypeForComprehension
-            # Note: This isinstance check is intentional - this function does the expansion
             typ = typ.expand()
         else:
             break
@@ -3909,8 +3908,7 @@ def get_proper_types(
         typelist = types
         # Optimize for the common case so that we don't need to allocate anything
         if not any(
-            isinstance(t, (TypeAliasType, TypeGuardedType, ComputedType))  # type: ignore[misc]
-            for t in typelist
+            isinstance(t, (TypeAliasType, TypeGuardedType, ComputedType)) for t in typelist
         ):
             return cast("list[ProperType]", typelist)
         return [get_proper_type(t) for t in typelist]
