@@ -1513,6 +1513,7 @@ Port examples from the PEP:
 
 4. **Caching strategy**: How aggressively to cache evaluated type-level computations?
 
-5. **API access in expand()**: How does `TypeOperatorType.expand()` get access to the semantic analyzer API? Options: context variable, stored reference, or lazy creation.
+5. **API access in expand()**: ~~How does `TypeOperatorType.expand()` get access to the semantic analyzer API? Options: context variable, stored reference, or lazy creation.~~
+   **RESOLVED**: Use a context variable (`typelevel_ctx` in `mypy/typelevel.py`). The `TypeLevelContext` class holds a reference to the `SemanticAnalyzerCoreInterface` API, set via a context manager (`typelevel_ctx.set_api(api)`) during type analysis. The evaluation functions access it via `typelevel_ctx.api`.
 
 6. **Type variable handling in operators**: When should type variables in operator arguments block evaluation vs. be substituted first?
