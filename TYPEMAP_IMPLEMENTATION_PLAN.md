@@ -1251,23 +1251,10 @@ def evaluate_comprehension(typ: TypeForComprehension) -> Type:
 
 ## Phase 4: Integration Points
 
-### 4.1 Integrate with Type Alias Expansion (`mypy/types.py`)
-
-Modify `TypeAliasType._expand_once()` to evaluate type-level computations:
-
-```python
-def _expand_once(self) -> Type:
-    # ... existing expansion logic ...
-
-    # After substitution, evaluate type-level computations
-    if self.alias is not None:
-        result = expand_type(self.alias.target, type_env)
-        evaluator = TypeLevelEvaluator(...)
-        result = evaluator.evaluate(result)
-        return result
-```
 
 ### 4.2 Integrate with `expand_type()` (`mypy/expandtype.py`)
+
+I THINK THIS IS NOT NEEDED
 
 Extend `ExpandTypeVisitor` to handle new types:
 
@@ -1294,37 +1281,6 @@ class ExpandTypeVisitor(TypeTransformVisitor):
 Note: Conditional types are now `_Cond[...]` TypeOperatorType, so they are handled by
 `visit_type_operator_type` along with all other type operators.
 
-### 4.3 Subtype Checking (`mypy/subtypes.py`)
-
-Add subtype rules for new types:
-
-```python
-class SubtypeVisitor(TypeVisitor[bool]):
-    # ... existing methods ...
-
-    def visit_type_operator_type(self, left: TypeOperatorType) -> bool:
-        # For _Cond[condition, TrueType, FalseType]: subtype if both branches are subtypes
-        # OR if we can evaluate the condition
-        if left.fullname == 'builtins._Cond' and len(left.args) == 3:
-            condition, true_type, false_type = left.args
-            evaluator = TypeLevelEvaluator(...)
-            result = evaluator.eval_condition(condition)
-
-            if result is True:
-                return is_subtype(true_type, self.right)
-            elif result is False:
-                return is_subtype(false_type, self.right)
-            else:
-                # Must be subtype in both cases
-                return (is_subtype(true_type, self.right) and
-                        is_subtype(false_type, self.right))
-
-        # For other type operators, expand first then check subtype
-        expanded = left.expand()
-        if expanded is not left:
-            return is_subtype(expanded, self.right)
-        return False  # Unevaluatable type operator
-```
 
 ### 4.4 Type Inference with `**kwargs` TypeVar
 
