@@ -190,3 +190,73 @@ reveal_type(x1)  # N: Revealed type is "builtins.str"
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
+
+[case testTypeOperatorFromUnion]
+# flags: --python-version 3.10
+# Test FromUnion operator
+from typing import FromUnion
+
+x: FromUnion[int | str | float]
+reveal_type(x)  # N: Revealed type is "tuple[builtins.int, builtins.str, builtins.float]"
+
+# Non-union becomes 1-tuple
+y: FromUnion[int]
+reveal_type(y)  # N: Revealed type is "tuple[builtins.int]"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testTypeOperatorStringConcat]
+# Test string concatenation operator
+from typing import Concat, Literal
+
+x: Concat[Literal["hello"], Literal["world"]]
+reveal_type(x)  # N: Revealed type is "Literal['helloworld']"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testTypeOperatorStringUppercase]
+# Test string case operators
+from typing import Uppercase, Lowercase, Capitalize, Uncapitalize, Literal
+
+x1: Uppercase[Literal["hello"]]
+reveal_type(x1)  # N: Revealed type is "Literal['HELLO']"
+
+x2: Lowercase[Literal["HELLO"]]
+reveal_type(x2)  # N: Revealed type is "Literal['hello']"
+
+x3: Capitalize[Literal["hello"]]
+reveal_type(x3)  # N: Revealed type is "Literal['Hello']"
+
+x4: Uncapitalize[Literal["HELLO"]]
+reveal_type(x4)  # N: Revealed type is "Literal['hELLO']"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testTypeOperatorStringSlice]
+# Test string slice operator
+from typing import Slice, Literal
+
+x1: Slice[Literal["hello"], Literal[1], Literal[4]]
+reveal_type(x1)  # N: Revealed type is "Literal['ell']"
+
+x2: Slice[Literal["hello"], Literal[0], Literal[2]]
+reveal_type(x2)  # N: Revealed type is "Literal['he']"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testTypeOperatorLength]
+# Test Length operator
+from typing import Length, Literal, Tuple
+
+x: Length[tuple[int, str, float]]
+reveal_type(x)  # N: Revealed type is "Literal[3]"
+
+y: Length[tuple[int]]
+reveal_type(y)  # N: Revealed type is "Literal[1]"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]

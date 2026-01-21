@@ -5,7 +5,6 @@ This module provides the evaluation functions for type-level computations
 
 Note: Conditional types are now represented as _Cond[...] TypeOperatorType.
 
-Phase 3A implements: _Cond and IsSub evaluation
 """
 
 from __future__ import annotations
@@ -17,17 +16,26 @@ from typing import TYPE_CHECKING, Final
 from mypy.subtypes import is_subtype
 from mypy.types import (
     AnyType,
+    Instance,
     LiteralType,
+    NoneType,
+    ProperType,
+    TupleType,
     Type,
     TypeForComprehension,
+    TypeAliasType,
     TypeOfAny,
+    TypeVarType,
     TypeOperatorType,
     UninhabitedType,
+    UnionType,
     get_proper_type,
     has_type_vars,
+    is_stuck_expansion,
 )
 
 if TYPE_CHECKING:
+    from mypy.nodes import TypeInfo
     from mypy.semanal_shared import SemanticAnalyzerInterface
 
 
@@ -92,6 +100,10 @@ def register_operator(
     return decorator
 
 
+class EvaluationStuck(Exception):
+    pass
+
+
 class TypeLevelEvaluator:
     """Evaluates type-level computations to concrete types.
 
@@ -107,6 +119,17 @@ class TypeLevelEvaluator:
             return self.eval_operator(typ)
         return typ  # Already a concrete type or can't be evaluated
 
+    def eval_proper(self, typ: Type) -> ProperType:
+        """Main entry point: evaluate a type to its simplified form."""
+        typ = get_proper_type(self.evaluate(typ))
+        # A call to another expansion via an alias got stuck, reraise here
+        if is_stuck_expansion(typ):
+            raise EvaluationStuck
+        if isinstance(typ, TypeVarType):
+            raise EvaluationStuck
+
+        return typ
+
     def eval_operator(self, typ: TypeOperatorType) -> Type:
         """Evaluate a type operator by dispatching to registered handler."""
         fullname = typ.fullname
@@ -120,6 +143,24 @@ class TypeLevelEvaluator:
             return EXPANSION_ANY
 
         return evaluator(self, typ)
+
+    # --- Type construction helpers ---
+
+    def literal_bool(self, value: bool) -> LiteralType:
+        """Create a Literal[True] or Literal[False] type."""
+        return LiteralType(value, self.api.named_type("builtins.bool"))
+
+    def literal_int(self, value: int) -> LiteralType:
+        """Create a Literal[int] type."""
+        return LiteralType(value, self.api.named_type("builtins.int"))
+
+    def literal_str(self, value: str) -> LiteralType:
+        """Create a Literal[str] type."""
+        return LiteralType(value, self.api.named_type("builtins.str"))
+
+    def tuple_type(self, items: list[Type]) -> TupleType:
+        """Create a tuple type with the given items."""
+        return TupleType(items, self.api.named_type("builtins.tuple"))
 
 
 # --- Operator Implementations for Phase 3A ---
@@ -154,29 +195,285 @@ def _eval_issub(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
 
     lhs, rhs = typ.args
 
-    left = evaluator.evaluate(lhs)
-    right = evaluator.evaluate(rhs)
-
-    # Get proper types for subtype check
-    left_proper = get_proper_type(left)
-    right_proper = get_proper_type(right)
+    left_proper = evaluator.eval_proper(lhs)
+    right_proper = evaluator.eval_proper(rhs)
 
     # Handle type variables - may be undecidable
-    # XXX: Do I care?
     if has_type_vars(left_proper) or has_type_vars(right_proper):
         return EXPANSION_ANY
 
     result = is_subtype(left_proper, right_proper)
 
-    return LiteralType(result, evaluator.api.named_type("builtins.bool"))
+    return evaluator.literal_bool(result)
 
 
 def extract_literal_bool(typ: Type) -> bool | None:
-    """Extract int value from LiteralType."""
+    """Extract bool value from LiteralType."""
     typ = get_proper_type(typ)
     if isinstance(typ, LiteralType) and isinstance(typ.value, bool):
         return typ.value
     return None
+
+
+def extract_literal_int(typ: Type) -> int | None:
+    """Extract int value from LiteralType."""
+    typ = get_proper_type(typ)
+    if isinstance(typ, LiteralType) and isinstance(typ.value, int) and not isinstance(typ.value, bool):
+        return typ.value
+    return None
+
+
+def extract_literal_string(typ: Type) -> str | None:
+    """Extract string value from LiteralType."""
+    typ = get_proper_type(typ)
+    if isinstance(typ, LiteralType) and isinstance(typ.value, str):
+        return typ.value
+    return None
+
+
+# --- Phase 3B: Type Introspection Operators ---
+
+
+@register_operator("typing.GetArg")
+def _eval_get_arg(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """Evaluate GetArg[T, Base, Idx] - get type argument at index from T as Base."""
+    if len(typ.args) != 3:
+        return UninhabitedType()
+
+    target = evaluator.eval_proper(typ.args[0])
+    base = evaluator.eval_proper(typ.args[1])
+    idx_type = evaluator.eval_proper(typ.args[2])
+
+    # Extract index as int
+    index = extract_literal_int(idx_type)
+    if index is None:
+        return UninhabitedType()  # Can't evaluate without literal index
+
+    if isinstance(target, Instance) and isinstance(base, Instance):
+        args = get_type_args_for_base(target, base.type)
+        if args is not None and 0 <= index < len(args):
+            return args[index]
+        return UninhabitedType()  # Never - invalid index or not a subtype
+
+    return UninhabitedType()
+
+
+@register_operator("typing.GetArgs")
+def _eval_get_args(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """Evaluate GetArgs[T, Base] -> tuple of all type args from T as Base."""
+    if len(typ.args) != 2:
+        return UninhabitedType()
+
+    target = evaluator.eval_proper(typ.args[0])
+    base = evaluator.eval_proper(typ.args[1])
+
+    if isinstance(target, Instance) and isinstance(base, Instance):
+        args = get_type_args_for_base(target, base.type)
+        if args is not None:
+            return evaluator.tuple_type(list(args))
+        return UninhabitedType()
+
+    return UninhabitedType()
+
+
+@register_operator("typing.FromUnion")
+def _eval_from_union(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """Evaluate FromUnion[T] -> tuple of union elements."""
+    if len(typ.args) != 1:
+        return UninhabitedType()
+
+    target = evaluator.eval_proper(typ.args[0])
+
+    if isinstance(target, UnionType):
+        return evaluator.tuple_type(list(target.items))
+    else:
+        # Non-union becomes 1-tuple
+        return evaluator.tuple_type([target])
+
+
+@register_operator("typing.GetAttr")
+def _eval_get_attr(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """Evaluate GetAttr[T, Name] - get attribute type from T."""
+    if len(typ.args) != 2:
+        return UninhabitedType()
+
+    target = evaluator.eval_proper(typ.args[0])
+    name_type = evaluator.eval_proper(typ.args[1])
+
+    name = extract_literal_string(name_type)
+    if name is None:
+        return UninhabitedType()
+
+    if isinstance(target, Instance):
+        node = target.type.names.get(name)
+        if node is not None and node.type is not None:
+            return node.type
+        return UninhabitedType()
+
+    return UninhabitedType()
+
+
+# --- Phase 3B: String Operations ---
+
+
+@register_operator("typing.Slice")
+def _eval_slice(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """Evaluate Slice[S, Start, End] - slice a literal string."""
+    if len(typ.args) != 3:
+        return UninhabitedType()
+
+    s = extract_literal_string(evaluator.eval_proper(typ.args[0]))
+
+    # Handle start - can be int or None
+    start_type = evaluator.eval_proper(typ.args[1])
+    if isinstance(start_type, NoneType):
+        start: int | None = None
+    else:
+        start = extract_literal_int(start_type)
+        if start is None:
+            return UninhabitedType()
+
+    # Handle end - can be int or None
+    end_type = evaluator.eval_proper(typ.args[2])
+    if isinstance(end_type, NoneType):
+        end: int | None = None
+    else:
+        end = extract_literal_int(end_type)
+        if end is None:
+            return UninhabitedType()
+
+    if s is not None:
+        result = s[start:end]
+        return evaluator.literal_str(result)
+
+    return UninhabitedType()
+
+
+@register_operator("typing.Concat")
+def _eval_concat(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """Evaluate Concat[S1, S2] - concatenate two literal strings."""
+    if len(typ.args) != 2:
+        return UninhabitedType()
+
+    left = extract_literal_string(evaluator.eval_proper(typ.args[0]))
+    right = extract_literal_string(evaluator.eval_proper(typ.args[1]))
+
+    if left is not None and right is not None:
+        return evaluator.literal_str(left + right)
+
+    return UninhabitedType()
+
+
+@register_operator("typing.Uppercase")
+def _eval_uppercase(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """Evaluate Uppercase[S] - convert literal string to uppercase."""
+    if len(typ.args) != 1:
+        return UninhabitedType()
+
+    s = extract_literal_string(evaluator.eval_proper(typ.args[0]))
+    if s is not None:
+        return evaluator.literal_str(s.upper())
+
+    return UninhabitedType()
+
+
+@register_operator("typing.Lowercase")
+def _eval_lowercase(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """Evaluate Lowercase[S] - convert literal string to lowercase."""
+    if len(typ.args) != 1:
+        return UninhabitedType()
+
+    s = extract_literal_string(evaluator.eval_proper(typ.args[0]))
+    if s is not None:
+        return evaluator.literal_str(s.lower())
+
+    return UninhabitedType()
+
+
+@register_operator("typing.Capitalize")
+def _eval_capitalize(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """Evaluate Capitalize[S] - capitalize first character of literal string."""
+    if len(typ.args) != 1:
+        return UninhabitedType()
+
+    s = extract_literal_string(evaluator.eval_proper(typ.args[0]))
+    if s is not None:
+        return evaluator.literal_str(s.capitalize())
+
+    return UninhabitedType()
+
+
+@register_operator("typing.Uncapitalize")
+def _eval_uncapitalize(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """Evaluate Uncapitalize[S] - lowercase first character of literal string."""
+    if len(typ.args) != 1:
+        return UninhabitedType()
+
+    s = extract_literal_string(evaluator.eval_proper(typ.args[0]))
+    if s is not None:
+        result = s[0].lower() + s[1:] if s else s
+        return evaluator.literal_str(result)
+
+    return UninhabitedType()
+
+
+# --- Phase 3B: Utility Operators ---
+
+
+@register_operator("typing.Length")
+def _eval_length(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """Evaluate Length[T] -> Literal[int] for tuple length."""
+    if len(typ.args) != 1:
+        return UninhabitedType()
+
+    target = evaluator.eval_proper(typ.args[0])
+
+    if isinstance(target, TupleType):
+        # Check for unbounded tuple (has ..., represented by partial_fallback)
+        if target.partial_fallback and not target.items:
+            return NoneType()  # Unbounded tuple returns None
+        return evaluator.literal_int(len(target.items))
+
+    return UninhabitedType()
+
+
+# --- Helper Functions ---
+
+
+def get_type_args_for_base(instance: Instance, base_type: "TypeInfo") -> list[Type] | None:
+    """Get type args when viewing instance as base class.
+
+    Returns None if instance is not a subtype of base_type.
+    """
+    # Direct match
+    if instance.type == base_type:
+        return list(instance.args)
+
+    # Walk the MRO to find the base and map type arguments
+    for base in instance.type.mro:
+        if base == base_type:
+            return map_type_args_to_base(instance, base_type)
+
+    return None
+
+
+def map_type_args_to_base(instance: Instance, base: "TypeInfo") -> list[Type]:
+    """Map instance's type args through inheritance chain to base."""
+    from mypy.expandtype import expand_type_by_instance
+
+    # Find the base in the direct bases and expand
+    # XXX: I think this is wrong
+    for b_proper in instance.type.bases:
+        if b_proper.type == base:
+            expanded = expand_type_by_instance(b_proper, instance)
+            if isinstance(expanded, Instance):
+                return list(expanded.args)
+            return []
+
+    # Need to walk through intermediate bases
+    # This is a simplified version - a full implementation would need to
+    # recursively expand through the entire inheritance chain
+    return []
 
 
 # --- Public API ---
@@ -191,7 +488,10 @@ def evaluate_type_operator(typ: TypeOperatorType) -> Type:
         raise AssertionError("No access to semantic analyzer!")
 
     evaluator = TypeLevelEvaluator(typelevel_ctx.api)
-    res = evaluator.eval_operator(typ)
+    try:
+        res = evaluator.eval_operator(typ)
+    except EvaluationStuck:
+        res = EXPANSION_ANY
     # print("EVALED!!", res)
     return res
 
