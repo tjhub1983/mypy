@@ -10,6 +10,7 @@ from mypy.nodes import (
     BytesExpr,
     CallExpr,
     ComplexExpr,
+    ConditionalExpr,
     Context,
     DictExpr,
     EllipsisExpr,
@@ -285,5 +286,20 @@ def expr_to_unanalyzed_type(
         )
         result.extra_items_from = extra_items_from
         return result
+    elif isinstance(expr, ConditionalExpr):
+
+        # Use __builtins__ so it can be resolved without explicit import
+        return UnboundType(
+            "__builtins__._Cond",
+            [
+                expr_to_unanalyzed_type(
+                    arg, options, allow_new_syntax, expr, lookup_qualified=lookup_qualified
+                )
+                for arg in [expr.cond, expr.if_expr, expr.else_expr]
+            ],
+            line=expr.line,
+            column=expr.column,
+        )
+
     else:
         raise TypeTranslationError()

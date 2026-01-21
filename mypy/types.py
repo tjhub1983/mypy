@@ -240,6 +240,9 @@ class TypeOfAny:
     # used to ignore Anys inserted by the suggestion engine when
     # generating constraints.
     suggestion_engine: Final = 9
+    # Does this Any comes from typelevel computation getting stuck by an
+    # unsubstituted type-variable
+    expansion_stuck: Final = 10
 
 
 def deserialize_type(data: JsonDict | str) -> Type:
@@ -3914,6 +3917,31 @@ def get_proper_types(
         return [get_proper_type(t) for t in typelist]
     else:
         return [get_proper_type(t) for t in types]
+
+
+def is_stuck_expansion(typ: Type) -> bool:
+    return (
+        isinstance(typ, ProperType)
+        and isinstance(typ, AnyType)
+        and typ.type_of_any == TypeOfAny.expansion_stuck
+    )
+
+
+def try_expand_or_none(type: Type) -> ProperType | None:
+    """Try to expand a type, but return None if it gets stuck"""
+    type2 = get_proper_type(type)
+    if is_stuck_expansion(type2):
+        return None
+    else:
+        return type2
+
+
+def try_expand(type: Type) -> Type:
+    """Try to expand a type, but return the original type if it gets stuck"""
+    if type2 := try_expand_or_none(type):
+        return type2
+    else:
+        return type
 
 
 # We split off the type visitor base classes to another module

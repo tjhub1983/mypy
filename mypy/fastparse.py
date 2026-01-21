@@ -2174,7 +2174,7 @@ class TypeConverter:
         true_type = self.visit(n.body)
         false_type = self.visit(n.orelse)
 
-        # Use fully qualified name so it can be resolved without explicit import
+        # Use __builtins__ so it can be resolved without explicit import
         return UnboundType(
             "__builtins__._Cond",
             [condition, true_type, false_type],

@@ -168,6 +168,7 @@ from mypy.types import (
     TUPLE_LIKE_INSTANCE_NAMES,
     AnyType,
     CallableType,
+    ComputedType,
     DeletedType,
     ErasedType,
     ExtraAttrs,
@@ -205,6 +206,7 @@ from mypy.types import (
     has_type_vars,
     is_named_instance,
     split_with_prefix_and_suffix,
+    try_expand,
 )
 from mypy.types_utils import (
     is_generic_instance,
@@ -4797,6 +4799,12 @@ class ExpressionChecker(ExpressionVisitor[Type], ExpressionCheckerSharedApi):
             revealed_type = self.accept(
                 expr.expr, type_context=self.type_context[-1], allow_none_return=True
             )
+
+            # XXX: We do this to expand ComputedTypes -- but should we *need* to?
+            # and do we want to?
+            if isinstance(revealed_type, ComputedType):
+                revealed_type = try_expand(revealed_type)
+
             if not self.chk.current_node_deferred:
                 self.msg.reveal_type(revealed_type, expr.expr)
                 if not self.chk.in_checked_function():

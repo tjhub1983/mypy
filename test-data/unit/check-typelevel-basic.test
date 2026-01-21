@@ -1,231 +1,176 @@
-[case testTypeOperatorBasic]
-# Test basic type operator detection and construction
-from typing import Generic, TypeVar
-from m import IsSub, _Cond
+[case testTypeOperatorIsSub]
+from typing import IsSub
 
-T = TypeVar('T')
+# Ternary syntax should be converted to _Cond[condition, true_type, false_type]
+x: IsSub[int, object]
+reveal_type(x)  # N: Revealed type is "Literal[True]"
 
-# Direct use of IsSub type operator
-def test_issub(x: IsSub[int, object]) -> None:
-    pass
+y: IsSub[int, str]
+reveal_type(y)  # N: Revealed type is "Literal[False]"
 
-# Direct use of _Cond type operator
-def test_cond(x: _Cond[IsSub[int, object], str, int]) -> None:
-    pass
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
 
-[file m.pyi]
-from typing import TypeVar, Generic
-
-def _type_operator(cls: type[T]) -> type[T]: ...
-T = TypeVar('T')
-_T = TypeVar('_T')
-_Base = TypeVar('_Base')
-_TrueType = TypeVar('_TrueType')
-_FalseType = TypeVar('_FalseType')
-
-@_type_operator
-class IsSub(Generic[_T, _Base]): ...
-
-@_type_operator
-class _Cond(Generic[_T, _TrueType, _FalseType]): ...
-
-[builtins fixtures/tuple.pyi]
 
 [case testTypeOperatorTernarySyntax]
-# Test ternary syntax conversion to _Cond
-from m import IsSub
+from typing import IsSub
 
 # Ternary syntax should be converted to _Cond[condition, true_type, false_type]
 x: str if IsSub[int, object] else int
 
-[file m.pyi]
-from typing import TypeVar, Generic
+x = 0  # E: Incompatible types in assignment (expression has type "int", variable has type "str")
 
-def _type_operator(cls: type[T]) -> type[T]: ...
-T = TypeVar('T')
-_T = TypeVar('_T')
-_Base = TypeVar('_Base')
-_TrueType = TypeVar('_TrueType')
-_FalseType = TypeVar('_FalseType')
-
-@_type_operator
-class IsSub(Generic[_T, _Base]): ...
-
-@_type_operator
-class _Cond(Generic[_T, _TrueType, _FalseType]): ...
-
-[builtins fixtures/tuple.pyi]
-
-[case testTypeOperatorTernarySyntaxWithExplicitImport]
-# Test ternary syntax alongside explicit _Cond usage
-from m import IsSub, _Cond
-
-# Both forms should work
-x: str if IsSub[int, object] else int
-y: _Cond[IsSub[int, object], str, int]
-
-[file m.pyi]
-from typing import TypeVar, Generic
-
-def _type_operator(cls: type[T]) -> type[T]: ...
-T = TypeVar('T')
-_T = TypeVar('_T')
-_Base = TypeVar('_Base')
-_TrueType = TypeVar('_TrueType')
-_FalseType = TypeVar('_FalseType')
-
-@_type_operator
-class IsSub(Generic[_T, _Base]): ...
-
-@_type_operator
-class _Cond(Generic[_T, _TrueType, _FalseType]): ...
-
-[builtins fixtures/tuple.pyi]
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
 
 [case testTypeOperatorInGenericClass]
 # Test type operators in generic class context
-from typing import Generic, TypeVar
-from m import IsSub, _Cond
+from typing import Generic, TypeVar, IsSub
 
 T = TypeVar('T')
 
 class MyClass(Generic[T]):
-    # Ternary syntax in class attribute
     attr: str if IsSub[T, int] else float
 
-    # _Cond in method signature
-    def method(self, x: _Cond[IsSub[T, str], list[T], T]) -> None:
+    def method(self, x: list[T] if IsSub[T, str] else T) -> None:
         pass
 
-[file m.pyi]
-from typing import TypeVar, Generic
+x: MyClass[int]
+reveal_type(x.attr)  # N: Revealed type is "builtins.str"
+x.method(0)
+x.method([0])  # E: Argument 1 to "method" of "MyClass" has incompatible type "list[int]"; expected "int"
 
-def _type_operator(cls: type[T]) -> type[T]: ...
-T = TypeVar('T')
-_T = TypeVar('_T')
-_Base = TypeVar('_Base')
-_TrueType = TypeVar('_TrueType')
-_FalseType = TypeVar('_FalseType')
+y: MyClass[object]
+reveal_type(y.attr)  # N: Revealed type is "builtins.float"
+y.method(0)
+y.method([0])
 
-@_type_operator
-class IsSub(Generic[_T, _Base]): ...
+z: MyClass[str]
+reveal_type(z.attr)  # N: Revealed type is "builtins.float"
+z.method('0')  # E: Argument 1 to "method" of "MyClass" has incompatible type "str"; expected "list[str]"
+z.method(['0'])
 
-@_type_operator
-class _Cond(Generic[_T, _TrueType, _FalseType]): ...
 
-[builtins fixtures/tuple.pyi]
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
 
 [case testTypeOperatorNestedTernary]
 # Test nested ternary expressions
-from m import IsSub
+from typing import IsSub
 
 # Nested ternary should work
 z: int if IsSub[int, str] else (float if IsSub[float, object] else str)
+z = 'xxx'  # E: Incompatible types in assignment (expression has type "str", variable has type "float")
 
-[file m.pyi]
-from typing import TypeVar, Generic
-
-def _type_operator(cls: type[T]) -> type[T]: ...
-T = TypeVar('T')
-_T = TypeVar('_T')
-_Base = TypeVar('_Base')
-_TrueType = TypeVar('_TrueType')
-_FalseType = TypeVar('_FalseType')
-
-@_type_operator
-class IsSub(Generic[_T, _Base]): ...
-
-@_type_operator
-class _Cond(Generic[_T, _TrueType, _FalseType]): ...
-
-[builtins fixtures/tuple.pyi]
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
 
 [case testTypeOperatorMultipleTypeArgs]
 # Test type operators with various argument types
-from typing import Generic, TypeVar
-from m import IsSub, _Cond
+from typing import Generic, TypeVar, IsSub
 
 T = TypeVar('T')
 U = TypeVar('U')
 
 class Container(Generic[T, U]):
     # Complex conditional with multiple type variables
-    value: _Cond[IsSub[T, int], list[U], tuple[T, U]]
+    value: list[U] if IsSub[T, int] else tuple[T, U]
 
-[file m.pyi]
-from typing import TypeVar, Generic
+x: Container[int, bool]
+reveal_type(x.value)  # N: Revealed type is "builtins.list[builtins.bool]"
 
-def _type_operator(cls: type[T]) -> type[T]: ...
-T = TypeVar('T')
-_T = TypeVar('_T')
-_Base = TypeVar('_Base')
-_TrueType = TypeVar('_TrueType')
-_FalseType = TypeVar('_FalseType')
+y: Container[str, bool]
+reveal_type(y.value)  # N: Revealed type is "tuple[builtins.str, builtins.bool]"
 
-@_type_operator
-class IsSub(Generic[_T, _Base]): ...
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
 
-@_type_operator
-class _Cond(Generic[_T, _TrueType, _FalseType]): ...
-
-[builtins fixtures/tuple.pyi]
-
-[case testTypeOperatorInFunctionSignature]
+[case testTypeOperatorCall0]
 # Test type operators in function signatures
-from typing import TypeVar
-from m import IsSub, _Cond
+from typing import TypeVar, IsSub
 
 T = TypeVar('T')
 
+# XXX: resolving this seems basically impossible!!
 def process(
-    x: _Cond[IsSub[T, str], bytes, T],
+    x: bytes if IsSub[T, str] else T,
     y: str if IsSub[T, int] else float
-) -> _Cond[IsSub[T, list[object]], int, str]:
+) -> int if IsSub[T, list[object]] else str:
     ...
 
-[file m.pyi]
-from typing import TypeVar, Generic
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
 
-def _type_operator(cls: type[T]) -> type[T]: ...
-T = TypeVar('T')
-_T = TypeVar('_T')
-_Base = TypeVar('_Base')
-_TrueType = TypeVar('_TrueType')
-_FalseType = TypeVar('_FalseType')
+[case testTypeOperatorCall1]
+# flags: --python-version 3.14
+# Test type operators in function signatures
+from typing import IsSub
 
-@_type_operator
-class IsSub(Generic[_T, _Base]): ...
+def process[T](x: T) -> IsSub[T, str]:
+    ...
 
-@_type_operator
-class _Cond(Generic[_T, _TrueType, _FalseType]): ...
+reveal_type(process(0))  # N: Revealed type is "Literal[False]"
+reveal_type(process('test'))  # N: Revealed type is "Literal[True]"
 
-[builtins fixtures/tuple.pyi]
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testTypeOperatorCall2]
+# flags: --python-version 3.14
+
+# Test a type operator in an *argument*, but one that should be resolvable
+# No sweat!!
+from typing import Callable, IsSub, Literal
+
+def process[T](x: T, y: IsSub[T, str]) -> None:
+    ...
+
+process(0, False)
+process(0, True)  # E: Argument 2 to "process" has incompatible type "Literal[True]"; expected "Literal[False]"
+process('test', False)  # E: Argument 2 to "process" has incompatible type "Literal[False]"; expected "Literal[True]"
+process('test', True)
+
+x0: Callable[[int, Literal[False]], None] = process
+x1: Callable[[int, Literal[True]], None] = process  # E: Incompatible types in assignment (expression has type "Callable[[T, typing.IsSub[T, str]], None]", variable has type "Callable[[int, Literal[True]], None]")
+x2: Callable[[str, Literal[False]], None] = process  # E: Incompatible types in assignment (expression has type "Callable[[T, typing.IsSub[T, str]], None]", variable has type "Callable[[str, Literal[False]], None]")
+x3: Callable[[str, Literal[True]], None] = process
+
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testTypeOperatorCall3]
+# flags: --python-version 3.14
+
+# Test a type operator in an *argument*, but one that should be resolvable
+# No sweat!!
+from typing import Callable, IsSub, Literal
+
+def process[T](x: IsSub[T, str], y: T) -> None:
+    ...
+
+process(False, 0)
+process(True, 0)  # E: Argument 1 to "process" has incompatible type "Literal[True]"; expected "Literal[False]"
+process(False, 'test')  # E: Argument 1 to "process" has incompatible type "Literal[False]"; expected "Literal[True]"
+process(True, 'test')
+
+x0: Callable[[Literal[False], int], None] = process
+x1: Callable[[Literal[True], int], None] = process  # E: Incompatible types in assignment (expression has type "Callable[[typing.IsSub[T, str], T], None]", variable has type "Callable[[Literal[True], int], None]")
+x2: Callable[[Literal[False], str], None] = process  # E: Incompatible types in assignment (expression has type "Callable[[typing.IsSub[T, str], T], None]", variable has type "Callable[[Literal[False], str], None]")
+x3: Callable[[Literal[True], str], None] = process
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
 
 [case testTypeOperatorInTypeAlias]
+# flags: --python-version 3.14
 # Test type operators in type aliases (using concrete types to avoid unbound typevar issues)
-from m import IsSub, _Cond
+from typing import IsSub
 
 # Type alias using _Cond with concrete types
-ConditionalType = _Cond[IsSub[int, object], str, bytes]
+type ConditionalType = str if IsSub[int, object] else bytes
+z: ConditionalType = b'lol'  # E: Incompatible types in assignment (expression has type "bytes", variable has type "str")
 
-# Note: Ternary syntax at module level without TypeAlias annotation is treated as
-# a runtime expression, not a type alias. The ternary syntax works best in
-# annotations (function signatures, variable annotations, class attributes).
 
-[file m.pyi]
-from typing import TypeVar, Generic
-
-def _type_operator(cls: type[T]) -> type[T]: ...
-T = TypeVar('T')
-_T = TypeVar('_T')
-_Base = TypeVar('_Base')
-_TrueType = TypeVar('_TrueType')
-_FalseType = TypeVar('_FalseType')
-
-@_type_operator
-class IsSub(Generic[_T, _Base]): ...
-
-@_type_operator
-class _Cond(Generic[_T, _TrueType, _FalseType]): ...
-
-[builtins fixtures/tuple.pyi]
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]

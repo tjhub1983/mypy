@@ -120,6 +120,7 @@ from mypy.options import OPTIONS_AFFECTING_CACHE_NO_PLATFORM
 from mypy.partially_defined import PossiblyUndefinedVariableVisitor
 from mypy.semanal import SemanticAnalyzer
 from mypy.semanal_pass1 import SemanticAnalyzerPreAnalysis
+from mypy.typelevel import typelevel_ctx
 from mypy.util import (
     DecodeError,
     decode_python_encoding,
@@ -483,7 +484,8 @@ def build_inner(
 
     reset_global_state()
     try:
-        graph = dispatch(sources, manager, stdout)
+        with typelevel_ctx.set_api(manager.semantic_analyzer):
+            graph = dispatch(sources, manager, stdout)
         if not options.fine_grained_incremental:
             type_state.reset_all_subtype_caches()
         if options.timing_stats is not None:

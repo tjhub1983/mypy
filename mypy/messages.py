@@ -90,6 +90,7 @@ from mypy.types import (
     TypeAliasType,
     TypedDictType,
     TypeOfAny,
+    TypeOperatorType,
     TypeStrVisitor,
     TypeType,
     TypeVarLikeType,
@@ -102,6 +103,7 @@ from mypy.types import (
     flatten_nested_unions,
     get_proper_type,
     get_proper_types,
+    try_expand,
 )
 from mypy.typetraverser import TypeTraverserVisitor
 from mypy.util import plural_s, unmangle
@@ -2607,6 +2609,12 @@ def format_type_inner(
             if typ.args:
                 type_str += f"[{format_list(typ.args)}]"
         return type_str
+
+    typ = try_expand(typ)
+    if isinstance(typ, TypeOperatorType):
+        # There are type arguments. Convert the arguments to strings.
+        base_str = typ.type.fullname if typ.type else "<unfixed>"
+        return f"{base_str}[{format_list(typ.args)}]"
 
     # TODO: always mention type alias names in errors.
     typ = get_proper_type(typ)

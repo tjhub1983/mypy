@@ -15,6 +15,7 @@ from mypy.nodes import ARG_STAR, ARG_STAR2, FuncItem, TypeAlias
 from mypy.types import (
     AnyType,
     CallableType,
+    ComputedType,
     Instance,
     LiteralType,
     NoneType,
