@@ -2176,7 +2176,7 @@ class TypeConverter:
 
         # Use fully qualified name so it can be resolved without explicit import
         return UnboundType(
-            "typing._Cond",
+            "__builtins__._Cond",
             [condition, true_type, false_type],
             line=self.line,
             column=self.convert_column(n.col_offset),

@@ -515,7 +515,7 @@ def expr_to_unanalyzed_type(
         true_type = expr_to_unanalyzed_type(expr.body, options, ...)
         false_type = expr_to_unanalyzed_type(expr.orelse, options, ...)
         return UnboundType(
-            "typing._Cond",
+            "builtins._Cond",
             [condition, true_type, false_type],
             line=expr.lineno,
             column=expr.col_offset,
@@ -789,7 +789,7 @@ class TypeLevelEvaluator:
 
 # --- Operator Implementations ---
 
-@register_operator('typing._Cond')
+@register_operator('builtins._Cond')
 def eval_cond(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     """Evaluate _Cond[condition, TrueType, FalseType]"""
     return evaluator.eval_conditional(typ)
@@ -1203,7 +1203,7 @@ class SubtypeVisitor(TypeVisitor[bool]):
     def visit_type_operator_type(self, left: TypeOperatorType) -> bool:
         # For _Cond[condition, TrueType, FalseType]: subtype if both branches are subtypes
         # OR if we can evaluate the condition
-        if left.fullname == 'typing._Cond' and len(left.args) == 3:
+        if left.fullname == 'builtins._Cond' and len(left.args) == 3:
             condition, true_type, false_type = left.args
             evaluator = TypeLevelEvaluator(...)
             result = evaluator.eval_condition(condition)

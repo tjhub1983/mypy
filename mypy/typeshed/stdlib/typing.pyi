@@ -1358,19 +1358,6 @@ class IsSub(Generic[_T, _Base]):
 
     ...
 
-_TrueType = TypeVar("_TrueType")
-_FalseType = TypeVar("_FalseType")
-
-@_type_operator
-class _Cond(Generic[_T, _TrueType, _FalseType]):
-    """
-    Type-level conditional expression.
-    _Cond[IsSub[T, Base], TrueType, FalseType] evaluates to TrueType if T is a subtype of Base,
-    otherwise FalseType.
-    """
-
-    ...
-
 @_type_operator
 class Iter(Generic[_T]):
     """

@@ -5280,9 +5280,7 @@ class SemanticAnalyzer(
     def is_classvar(self, typ: Type) -> bool:
         if not isinstance(typ, UnboundType):
             return False
-        # Use suppress_errors=True because the type name may contain qualified names
-        # like "typing._Cond" that can't be looked up without importing the module
-        sym = self.lookup_qualified(typ.name, typ, suppress_errors=True)
+        sym = self.lookup_qualified(typ.name, typ)
         if not sym or not sym.node:
             return False
         return sym.node.fullname == "typing.ClassVar"
@@ -5290,9 +5288,7 @@ class SemanticAnalyzer(
     def is_final_type(self, typ: Type | None) -> bool:
         if not isinstance(typ, UnboundType):
             return False
-        # Use suppress_errors=True because the type name may contain qualified names
-        # like "typing._Cond" that can't be looked up without importing the module
-        sym = self.lookup_qualified(typ.name, typ, suppress_errors=True)
+        sym = self.lookup_qualified(typ.name, typ)
         if not sym or not sym.node:
             return False
         return sym.node.fullname in FINAL_TYPE_NAMES

@@ -58,6 +58,7 @@ from typing import (  # noqa: Y022,UP035,RUF100
     final,
     overload,
     type_check_only,
+    _type_operator,
 )
 
 # we can't import `Literal` from typing or mypy crashes: see #11247
@@ -2230,3 +2231,17 @@ if sys.version_info >= (3, 11):
 
 if sys.version_info >= (3, 13):
     class PythonFinalizationError(RuntimeError): ...
+
+
+_TrueType = TypeVar("_TrueType")
+_FalseType = TypeVar("_FalseType")
+
+@_type_operator
+class _Cond(Generic[_T, _TrueType, _FalseType]):
+    """
+    Type-level conditional expression.
+    _Cond[IsSub[T, Base], TrueType, FalseType] evaluates to TrueType if T is a subtype of Base,
+    otherwise FalseType.
+    """
+
+    ...

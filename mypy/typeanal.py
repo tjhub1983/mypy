@@ -299,12 +299,7 @@ class TypeAnalyser(SyntheticTypeVisitor[Type], TypeAnalyzerPluginInterface):
         )
 
     def visit_unbound_type_nonoptional(self, t: UnboundType, defining_literal: bool) -> Type:
-        # Handle typing._Cond specially for ternary type syntax support
-        # This allows `X if Cond else Y` to work without explicit import of _Cond
-        if t.name == "typing._Cond":
-            sym = self.api.lookup_fully_qualified_or_none("typing._Cond")
-        else:
-            sym = self.lookup_qualified(t.name, t)
+        sym = self.lookup_qualified(t.name, t)
         param_spec_name = None
         if t.name.endswith((".args", ".kwargs")):
             param_spec_name = t.name.rsplit(".", 1)[0]
