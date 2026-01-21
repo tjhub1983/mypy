@@ -1,0 +1,231 @@
+[case testTypeOperatorBasic]
+# Test basic type operator detection and construction
+from typing import Generic, TypeVar
+from m import IsSub, _Cond
+
+T = TypeVar('T')
+
+# Direct use of IsSub type operator
+def test_issub(x: IsSub[int, object]) -> None:
+    pass
+
+# Direct use of _Cond type operator
+def test_cond(x: _Cond[IsSub[int, object], str, int]) -> None:
+    pass
+
+[file m.pyi]
+from typing import TypeVar, Generic
+
+def _type_operator(cls: type[T]) -> type[T]: ...
+T = TypeVar('T')
+_T = TypeVar('_T')
+_Base = TypeVar('_Base')
+_TrueType = TypeVar('_TrueType')
+_FalseType = TypeVar('_FalseType')
+
+@_type_operator
+class IsSub(Generic[_T, _Base]): ...
+
+@_type_operator
+class _Cond(Generic[_T, _TrueType, _FalseType]): ...
+
+[builtins fixtures/tuple.pyi]
+
+[case testTypeOperatorTernarySyntax]
+# Test ternary syntax conversion to _Cond
+from m import IsSub
+
+# Ternary syntax should be converted to _Cond[condition, true_type, false_type]
+x: str if IsSub[int, object] else int
+
+[file m.pyi]
+from typing import TypeVar, Generic
+
+def _type_operator(cls: type[T]) -> type[T]: ...
+T = TypeVar('T')
+_T = TypeVar('_T')
+_Base = TypeVar('_Base')
+_TrueType = TypeVar('_TrueType')
+_FalseType = TypeVar('_FalseType')
+
+@_type_operator
+class IsSub(Generic[_T, _Base]): ...
+
+@_type_operator
+class _Cond(Generic[_T, _TrueType, _FalseType]): ...
+
+[builtins fixtures/tuple.pyi]
+
+[case testTypeOperatorTernarySyntaxWithExplicitImport]
+# Test ternary syntax alongside explicit _Cond usage
+from m import IsSub, _Cond
+
+# Both forms should work
+x: str if IsSub[int, object] else int
+y: _Cond[IsSub[int, object], str, int]
+
+[file m.pyi]
+from typing import TypeVar, Generic
+
+def _type_operator(cls: type[T]) -> type[T]: ...
+T = TypeVar('T')
+_T = TypeVar('_T')
+_Base = TypeVar('_Base')
+_TrueType = TypeVar('_TrueType')
+_FalseType = TypeVar('_FalseType')
+
+@_type_operator
+class IsSub(Generic[_T, _Base]): ...
+
+@_type_operator
+class _Cond(Generic[_T, _TrueType, _FalseType]): ...
+
+[builtins fixtures/tuple.pyi]
+
+[case testTypeOperatorInGenericClass]
+# Test type operators in generic class context
+from typing import Generic, TypeVar
+from m import IsSub, _Cond
+
+T = TypeVar('T')
+
+class MyClass(Generic[T]):
+    # Ternary syntax in class attribute
+    attr: str if IsSub[T, int] else float
+
+    # _Cond in method signature
+    def method(self, x: _Cond[IsSub[T, str], list[T], T]) -> None:
+        pass
+
+[file m.pyi]
+from typing import TypeVar, Generic
+
+def _type_operator(cls: type[T]) -> type[T]: ...
+T = TypeVar('T')
+_T = TypeVar('_T')
+_Base = TypeVar('_Base')
+_TrueType = TypeVar('_TrueType')
+_FalseType = TypeVar('_FalseType')
+
+@_type_operator
+class IsSub(Generic[_T, _Base]): ...
+
+@_type_operator
+class _Cond(Generic[_T, _TrueType, _FalseType]): ...
+
+[builtins fixtures/tuple.pyi]
+
+[case testTypeOperatorNestedTernary]
+# Test nested ternary expressions
+from m import IsSub
+
+# Nested ternary should work
+z: int if IsSub[int, str] else (float if IsSub[float, object] else str)
+
+[file m.pyi]
+from typing import TypeVar, Generic
+
+def _type_operator(cls: type[T]) -> type[T]: ...
+T = TypeVar('T')
+_T = TypeVar('_T')
+_Base = TypeVar('_Base')
+_TrueType = TypeVar('_TrueType')
+_FalseType = TypeVar('_FalseType')
+
+@_type_operator
+class IsSub(Generic[_T, _Base]): ...
+
+@_type_operator
+class _Cond(Generic[_T, _TrueType, _FalseType]): ...
+
+[builtins fixtures/tuple.pyi]
+
+[case testTypeOperatorMultipleTypeArgs]
+# Test type operators with various argument types
+from typing import Generic, TypeVar
+from m import IsSub, _Cond
+
+T = TypeVar('T')
+U = TypeVar('U')
+
+class Container(Generic[T, U]):
+    # Complex conditional with multiple type variables
+    value: _Cond[IsSub[T, int], list[U], tuple[T, U]]
+
+[file m.pyi]
+from typing import TypeVar, Generic
+
+def _type_operator(cls: type[T]) -> type[T]: ...
+T = TypeVar('T')
+_T = TypeVar('_T')
+_Base = TypeVar('_Base')
+_TrueType = TypeVar('_TrueType')
+_FalseType = TypeVar('_FalseType')
+
+@_type_operator
+class IsSub(Generic[_T, _Base]): ...
+
+@_type_operator
+class _Cond(Generic[_T, _TrueType, _FalseType]): ...
+
+[builtins fixtures/tuple.pyi]
+
+[case testTypeOperatorInFunctionSignature]
+# Test type operators in function signatures
+from typing import TypeVar
+from m import IsSub, _Cond
+
+T = TypeVar('T')
+
+def process(
+    x: _Cond[IsSub[T, str], bytes, T],
+    y: str if IsSub[T, int] else float
+) -> _Cond[IsSub[T, list[object]], int, str]:
+    ...
+
+[file m.pyi]
+from typing import TypeVar, Generic
+
+def _type_operator(cls: type[T]) -> type[T]: ...
+T = TypeVar('T')
+_T = TypeVar('_T')
+_Base = TypeVar('_Base')
+_TrueType = TypeVar('_TrueType')
+_FalseType = TypeVar('_FalseType')
+
+@_type_operator
+class IsSub(Generic[_T, _Base]): ...
+
+@_type_operator
+class _Cond(Generic[_T, _TrueType, _FalseType]): ...
+
+[builtins fixtures/tuple.pyi]
+
+[case testTypeOperatorInTypeAlias]
+# Test type operators in type aliases (using concrete types to avoid unbound typevar issues)
+from m import IsSub, _Cond
+
+# Type alias using _Cond with concrete types
+ConditionalType = _Cond[IsSub[int, object], str, bytes]
+
+# Note: Ternary syntax at module level without TypeAlias annotation is treated as
+# a runtime expression, not a type alias. The ternary syntax works best in
+# annotations (function signatures, variable annotations, class attributes).
+
+[file m.pyi]
+from typing import TypeVar, Generic
+
+def _type_operator(cls: type[T]) -> type[T]: ...
+T = TypeVar('T')
+_T = TypeVar('_T')
+_Base = TypeVar('_Base')
+_TrueType = TypeVar('_TrueType')
+_FalseType = TypeVar('_FalseType')
+
+@_type_operator
+class IsSub(Generic[_T, _Base]): ...
+
+@_type_operator
+class _Cond(Generic[_T, _TrueType, _FalseType]): ...
+
+[builtins fixtures/tuple.pyi]
