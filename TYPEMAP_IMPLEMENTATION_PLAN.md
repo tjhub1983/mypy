@@ -568,29 +568,26 @@ def analyze_callable_type(self, t: UnboundType) -> Type:
 
 ---
 
-## Phase 3: Type Evaluation Engine (`mypy/typelevel.py` - new file)
+## Phase 3A: Core Conditional Types (`_Cond` and `IsSub`)
 
-### 3.1 Create Type Evaluator
+This phase implements the core conditional type evaluation - just `_Cond` and `IsSub`.
+This is the foundation that enables conditional type expressions to work.
 
-A new module for evaluating type-level computations. The evaluator dispatches
-based on the operator's fullname rather than using isinstance checks for each
-operator type.
+### 3A.1 Create Type Evaluator Core
 
 ```python
-"""Type-level computation evaluation."""
+"""Type-level computation evaluation - Core conditional types."""
 
 from __future__ import annotations
 
 from typing import Callable
 
 from mypy.types import (
-    Type, ProperType, Instance, TupleType, UnionType, LiteralType,
-    TypedDictType, CallableType, NoneType, AnyType, UninhabitedType,
-    TypeOperatorType, TypeForComprehension,
+    Type, ProperType, TypeOperatorType, TypeVarType,
 )
 from mypy.subtypes import is_subtype
 from mypy.typeops import get_proper_type
-from mypy.nodes import TypeInfo
+from mypy.type_visitor import TypeQuery
 
 
 # Registry mapping operator fullnames to their evaluation functions
@@ -608,16 +605,13 @@ def register_operator(fullname: str):
 class TypeLevelEvaluator:
     """Evaluates type-level computations to concrete types."""
 
-    def __init__(self, api: SemanticAnalyzerInterface):
+    def __init__(self, api: SemanticAnalyzerCoreInterface):
         self.api = api
 
     def evaluate(self, typ: Type) -> Type:
         """Main entry point: evaluate a type to its simplified form."""
         if isinstance(typ, TypeOperatorType):
             return self.eval_operator(typ)
-        elif isinstance(typ, TypeForComprehension):
-            return self.eval_comprehension(typ)
-
         return typ  # Already a concrete type or can't be evaluated
 
     def eval_operator(self, typ: TypeOperatorType) -> Type:
@@ -660,6 +654,114 @@ class TypeLevelEvaluator:
         else:
             # Undecidable - keep as _Cond TypeOperatorType
             return typ
+
+    def contains_unresolved_typevar(self, typ: Type) -> bool:
+        """Check if type contains unresolved type variables."""
+
+        class HasTypeVar(TypeQuery[bool]):
+            def __init__(self):
+                super().__init__(any)
+
+            def visit_type_var(self, t: TypeVarType) -> bool:
+                return True
+
+        return typ.accept(HasTypeVar())
+
+
+# --- Operator Implementations for Phase 3A ---
+
+@register_operator('typing._Cond')
+def eval_cond(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """Evaluate _Cond[condition, TrueType, FalseType]"""
+    return evaluator.eval_conditional(typ)
+
+
+# Note: IsSub is not registered as an operator because it's not meant to be
+# expanded directly - it's evaluated as a condition within _Cond.
+
+
+# --- Public API ---
+
+def evaluate_type_operator(typ: TypeOperatorType) -> Type:
+    """Evaluate a TypeOperatorType. Called from TypeOperatorType.expand().
+
+    Uses typelevel_ctx.api to access the semantic analyzer.
+    """
+    if typelevel_ctx.api is None:
+        # No context available - can't evaluate yet
+        return AnyType(TypeOfAny.special_form)
+
+    evaluator = TypeLevelEvaluator(typelevel_ctx.api)
+    return evaluator.eval_operator(typ)
+```
+
+---
+
+## Phase 3B: Remaining Type Operators
+
+This phase implements the remaining type operators after the core conditional types
+are working. These include introspection, construction, and utility operators.
+
+### 3B.1 Type Introspection Operators
+
+Extend `TypeLevelEvaluator` with helper methods and implement the introspection operators:
+
+```python
+# --- Additional helper methods for TypeLevelEvaluator ---
+
+class TypeLevelEvaluator:
+    # ... methods from Phase 3A ...
+
+    def get_type_args_for_base(self, instance: Instance, base: TypeInfo) -> list[Type] | None:
+        """Get type args when viewing instance as base class."""
+        for base_instance in instance.type.mro:
+            if base_instance == base:
+                return self.map_type_args_to_base(instance, base)
+        return None
+
+    def map_type_args_to_base(self, instance: Instance, base: TypeInfo) -> list[Type]:
+        """Map instance's type args through inheritance chain to base."""
+        from mypy.expandtype import expand_type_by_instance
+        for b in instance.type.bases:
+            b_proper = get_proper_type(b)
+            if isinstance(b_proper, Instance) and b_proper.type == base:
+                return list(expand_type_by_instance(b_proper, instance).args)
+        return []
+
+    def extract_literal_string(self, typ: Type) -> str | None:
+        """Extract string value from LiteralType."""
+        typ = get_proper_type(typ)
+        if isinstance(typ, LiteralType) and isinstance(typ.value, str):
+            return typ.value
+        return None
+
+    def extract_literal_int(self, typ: Type) -> int | None:
+        """Extract int value from LiteralType."""
+        typ = get_proper_type(typ)
+        if isinstance(typ, LiteralType) and isinstance(typ.value, int):
+            return typ.value
+        return None
+
+    def make_member_instance(
+        self,
+        name: str,
+        member_type: Type,
+        quals: Type,
+        init: Type,
+        definer: Type,
+    ) -> Instance:
+        """Create a Member[...] instance type."""
+        member_info = self.api.lookup_qualified('typing.Member', ...).node
+        return Instance(
+            member_info,
+            [
+                LiteralType(name, self.api.named_type('builtins.str')),
+                member_type,
+                quals,
+                init,
+                definer,
+            ],
+        )
 
     def eval_comprehension(self, typ: TypeForComprehension) -> Type:
         """Evaluate *[Expr for x in Iter[T] if Cond]"""
@@ -1391,55 +1493,67 @@ Port examples from the PEP:
 
 ## Phase 9: Incremental Implementation Order
 
-### Milestone 1: Core Type Operators (Weeks 1-3)
-1. Add `MemberType`, `ParamType` type classes
-2. Add `GetArg`, `GetArgs`, `FromUnion` operators
+### Milestone 1: Foundation (Weeks 1-2) ✓ COMPLETED
+1. Add `ComputedType` base class, `TypeOperatorType`, `TypeForComprehension`
+2. Add `is_type_operator` flag to `TypeInfo`
+3. Declare type operators in typeshed with `@_type_operator`
+4. Update type visitors for new types
+
+### Milestone 2: Type Analysis (Weeks 3-4) ✓ COMPLETED
+1. Detect `@_type_operator` decorated classes in semanal.py
+2. Construct `TypeOperatorType` in typeanal.py when encountering type operators
+3. Parse ternary syntax `X if Cond else Y` to `_Cond[Cond, X, Y]`
+4. Add context variable for API access (`typelevel_ctx`)
+5. Tests for type operator detection and ternary parsing
+
+### Milestone 3A: Core Conditional Evaluation (Week 5)
+1. Implement `TypeLevelEvaluator` core with `eval_condition` and `eval_conditional`
+2. Register `typing._Cond` operator
+3. Implement `IsSub` condition evaluation using `is_subtype()`
+4. Wire up `typelevel_ctx` in type analysis
+5. Tests for conditional type evaluation
+
+### Milestone 3B: Introspection Operators (Weeks 6-7)
+1. Add `GetArg`, `GetArgs`, `FromUnion` operators
+2. Add `GetAttr` operator
 3. Add `Members`, `Attrs` operators
-4. Basic type evaluator for these operators
-5. Tests for basic operations
+4. Tests for introspection operators
 
-### Milestone 2: Conditional Types (Weeks 4-5)
-1. Add `_Cond` type operator (conditional types are TypeOperatorType, not a separate class)
-2. Add `IsSub` condition operator
-3. Implement ternary syntax parsing to `_Cond` conversion
-4. Integrate with type evaluator
-5. Tests for conditionals
-
-### Milestone 3: Type Comprehensions (Weeks 6-7)
-1. Add `TypeForComprehension`, `IterType`
-2. Parser support for comprehension syntax
-3. Evaluator support for comprehensions
+### Milestone 4: Type Comprehensions (Weeks 8-9)
+1. Add `TypeForComprehension` evaluation
+2. Parser support for comprehension syntax `*[... for x in Iter[T]]`
+3. Add `Iter` operator support
 4. Tests for comprehensions
 
-### Milestone 4: NewProtocol/NewTypedDict (Weeks 8-10)
-1. Add `NewProtocolType`, `NewTypedDictType`
-2. Implement synthetic TypeInfo creation
+### Milestone 5: Type Construction (Weeks 10-12)
+1. Add `NewProtocol` - synthetic protocol creation
+2. Add `NewTypedDict` - synthetic TypedDict creation
 3. Integration with type checking
 4. Tests for type construction
 
-### Milestone 5: Extended Callables (Weeks 11-12)
+### Milestone 6: Extended Callables (Weeks 13-14)
 1. Full `Param` type support
 2. Callable introspection
 3. Extended callable construction
 4. Tests for callables
 
-### Milestone 6: String Operations (Week 13)
-1. Add string operation types
-2. Implement string evaluators
+### Milestone 7: String Operations (Week 15)
+1. Add `Slice`, `Concat` operators
+2. Add `Uppercase`, `Lowercase`, `Capitalize`, `Uncapitalize`
 3. Tests for string ops
 
-### Milestone 7: Annotated & InitField (Weeks 14-15)
+### Milestone 8: Annotated & InitField (Weeks 16-17)
 1. Preserve Annotated metadata
-2. GetAnnotations/DropAnnotations
+2. `GetAnnotations`/`DropAnnotations`
 3. InitField support
 4. Tests
 
-### Milestone 8: TypedDict kwargs inference (Week 16)
+### Milestone 9: TypedDict kwargs inference (Week 18)
 1. `Unpack[K]` for TypeVar K
 2. Inference from kwargs
 3. Tests
 
-### Milestone 9: Integration & Polish (Weeks 17-20)
+### Milestone 10: Integration & Polish (Weeks 19-20)
 1. Full PEP examples working
 2. Error messages
 3. Documentation
