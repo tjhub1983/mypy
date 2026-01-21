@@ -2163,6 +2163,23 @@ class TypeConverter:
         result = self.translate_argument_list(n.elts)
         return result
 
+    # IfExp(expr test, expr body, expr orelse)
+    def visit_IfExp(self, n: ast3.IfExp) -> Type:
+        """Handle ternary expressions in type contexts.
+
+        Convert `X if Cond else Y` to `_Cond[Cond, X, Y]`.
+        """
+        condition = self.visit(n.test)
+        true_type = self.visit(n.body)
+        false_type = self.visit(n.orelse)
+
+        return UnboundType(
+            "typing._Cond",
+            [condition, true_type, false_type],
+            line=self.line,
+            column=self.convert_column(n.col_offset),
+        )
+
 
 def stringify_name(n: AST) -> str | None:
     if isinstance(n, Name):

@@ -512,6 +512,9 @@ class TypeAnalyser(SyntheticTypeVisitor[Type], TypeAnalyzerPluginInterface):
                     res = get_proper_type(res)
                 return res
             elif isinstance(node, TypeInfo):
+                # Check if this is a type operator (decorated with @_type_operator)
+                if node.is_type_operator:
+                    return self.analyze_type_operator(t, node)
                 return self.analyze_type_with_type_info(node, t.args, t, t.empty_tuple_index)
             elif node.fullname in TYPE_ALIAS_NAMES:
                 return AnyType(TypeOfAny.special_form)
@@ -1113,6 +1116,21 @@ class TypeAnalyser(SyntheticTypeVisitor[Type], TypeAnalyzerPluginInterface):
     def visit_type_alias_type(self, t: TypeAliasType) -> Type:
         # TODO: should we do something here?
         return t
+
+    def analyze_type_operator(self, t: UnboundType, type_info: TypeInfo) -> Type:
+        """Analyze a type operator application like GetArg[T, Base, 0].
+
+        Returns a TypeOperatorType that will be expanded later.
+        """
+        # Analyze all type arguments
+        an_args = self.anal_array(
+            t.args,
+            allow_param_spec=True,
+            allow_param_spec_literals=type_info.has_param_spec_type,
+            allow_unpack=True,
+        )
+
+        return TypeOperatorType(type_info, an_args, t.line, t.column)
 
     def visit_type_operator_type(self, t: TypeOperatorType) -> Type:
         # Type operators are analyzed elsewhere

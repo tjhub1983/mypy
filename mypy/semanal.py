@@ -272,6 +272,7 @@ from mypy.types import (
     TYPE_ALIAS_NAMES,
     TYPE_CHECK_ONLY_NAMES,
     TYPE_NAMES,
+    TYPE_OPERATOR_NAMES,
     TYPE_VAR_LIKE_NAMES,
     TYPED_NAMEDTUPLE_NAMES,
     UNPACK_TYPE_NAMES,
@@ -2297,6 +2298,8 @@ class SemanticAnalyzer(
             info.is_disjoint_base = True
         elif refers_to_fullname(decorator, TYPE_CHECK_ONLY_NAMES):
             info.is_type_check_only = True
+        elif refers_to_fullname(decorator, TYPE_OPERATOR_NAMES):
+            info.is_type_operator = True
         elif (deprecated := self.get_deprecated(decorator)) is not None:
             info.deprecated = f"class {defn.fullname} is deprecated: {deprecated}"
 

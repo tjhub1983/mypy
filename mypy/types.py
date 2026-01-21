@@ -158,6 +158,9 @@ DEPRECATED_TYPE_NAMES: Final = ("warnings.deprecated", "typing_extensions.deprec
 # Supported @disjoint_base decorator names
 DISJOINT_BASE_DECORATOR_NAMES: Final = ("typing.disjoint_base", "typing_extensions.disjoint_base")
 
+# Supported @_type_operator decorator names (for type-level computation)
+TYPE_OPERATOR_NAMES: Final = ("typing._type_operator",)
+
 # We use this constant in various places when checking `tuple` subtyping:
 TUPLE_LIKE_INSTANCE_NAMES: Final = (
     "builtins.tuple",
