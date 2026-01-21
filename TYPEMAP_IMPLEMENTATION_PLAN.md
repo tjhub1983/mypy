@@ -6,8 +6,8 @@ This document outlines a plan for implementing the type-level computation propos
 
 The proposal introduces TypeScript-inspired type-level introspection and construction facilities:
 
-1. **Type Operators**: `GetArg`, `GetArgs`, `FromUnion`, `IsSub` (subtype check)
-2. **Conditional Types**: `X if IsSub[T, Base] else Y`
+1. **Type Operators**: `GetArg`, `GetArgs`, `FromUnion`, `IsSub` (subtype check), `_Cond` (conditional)
+2. **Conditional Types**: `_Cond[IsSub[T, Base], TrueType, FalseType]` (also supports ternary syntax `X if IsSub[T, Base] else Y`)
 3. **Type-Level Iteration**: `*[... for t in Iter[...]]`
 4. **Object Inspection**: `Members`, `Attrs`, `Member`, `NewProtocol`, `NewTypedDict`
 5. **Callable Extension**: `Param` type with qualifiers for extended callable syntax
@@ -42,9 +42,10 @@ class ComputedType(Type):
     that produces a concrete type.
 
     Subclasses:
-    - TypeOperatorType: e.g., GetArg[T, Base, 0], Members[T]
-    - ConditionalType: e.g., X if IsSub[T, Base] else Y
+    - TypeOperatorType: e.g., GetArg[T, Base, 0], Members[T], _Cond[IsSub[T, Base], X, Y]
     - TypeForComprehension: e.g., *[Expr for x in Iter[T] if Cond]
+
+    Note: Conditional types are represented as _Cond[...] TypeOperatorType, not a separate class.
     """
 
     __slots__ = ()
@@ -118,38 +119,12 @@ class TypeOperatorType(ComputedType):
 
 ### 1.4 Conditional Types and Comprehensions (`mypy/types.py`)
 
+**Note:** Conditional types are now represented as `_Cond[condition, TrueType, FalseType]` using
+`TypeOperatorType`, not a separate `ConditionalType` class. This simplifies the type system by
+having one unified mechanism for all type-level computations. The ternary syntax
+`X if IsSub[T, Base] else Y` is parsed and converted directly to `_Cond[IsSub[T, Base], X, Y]`.
+
 ```python
-class ConditionalType(ComputedType):
-    """
-    Represents `TrueType if IsSub[T, Base] else FalseType`.
-
-    The condition is itself a TypeOperatorType (IsSub[...]).
-    """
-
-    __slots__ = ("condition", "true_type", "false_type")
-
-    def __init__(
-        self,
-        condition: Type,  # Should be IsSub[T, Base] or boolean combination thereof
-        true_type: Type,
-        false_type: Type,
-        line: int = -1,
-        column: int = -1,
-    ) -> None:
-        super().__init__(line, column)
-        self.condition = condition
-        self.true_type = true_type
-        self.false_type = false_type
-
-    def accept(self, visitor: TypeVisitor[T]) -> T:
-        return visitor.visit_conditional_type(self)
-
-    def expand(self) -> Type:
-        """Evaluate the condition and return the appropriate branch."""
-        from mypy.typelevel import evaluate_conditional
-        return evaluate_conditional(self)
-
-
 class TypeForComprehension(ComputedType):
     """
     Represents *[Expr for var in Iter[T] if Cond].
@@ -192,9 +167,11 @@ class TypeVisitor(Generic[T]):
     # ... existing methods ...
 
     def visit_type_operator_type(self, t: TypeOperatorType) -> T: ...
-    def visit_conditional_type(self, t: ConditionalType) -> T: ...
     def visit_type_for_comprehension(self, t: TypeForComprehension) -> T: ...
 ```
+
+Note: There is no `visit_conditional_type` - conditional types are represented as `_Cond[...]`
+TypeOperatorType and handled by `visit_type_operator_type`.
 
 ### 1.6 Declare Type Operators in Typeshed (`mypy/typeshed/stdlib/typing.pyi`)
 
@@ -326,7 +303,18 @@ class NewTypedDict(Generic[Unpack[_Ts]]):
 class IsSub(Generic[_T, _Base]):
     """
     Type-level subtype check. Evaluates to a type-level boolean.
-    Used in conditional type expressions: `X if IsSub[T, Base] else Y`
+    Used in conditional type expressions: `_Cond[IsSub[T, Base], TrueType, FalseType]`
+    """
+    ...
+
+@_type_operator
+class _Cond(Generic[_T, _TrueType, _FalseType]):
+    """
+    Type-level conditional expression.
+    _Cond[IsSub[T, Base], TrueType, FalseType] evaluates to TrueType if T is a subtype of Base,
+    otherwise FalseType.
+
+    The ternary syntax `X if IsSub[T, Base] else Y` is converted to `_Cond[IsSub[T, Base], X, Y]`.
     """
     ...
 
@@ -434,7 +422,7 @@ def get_proper_type(typ: Type) -> ProperType:
         if isinstance(typ, TypeAliasType):
             typ = typ._expand_once()
         elif isinstance(typ, ComputedType):
-            # Handles TypeOperatorType, ConditionalType, TypeForComprehension
+            # Handles TypeOperatorType (including _Cond), TypeForComprehension
             typ = typ.expand()
         else:
             break
@@ -493,11 +481,12 @@ def analyze_type_operator(self, t: UnboundType, type_info: TypeInfo) -> Type:
 ### 2.2 Parse Conditional Type Syntax
 
 Handle the `X if IsSub[T, Base] else Y` syntax in type contexts by extending the parser.
+The ternary syntax is converted directly to `_Cond[condition, TrueType, FalseType]` TypeOperatorType.
 
 #### 2.2.1 AST Representation
 
 Python's parser already produces `IfExpr` (ternary) nodes. In type contexts, we need to
-recognize these and convert them to type expressions. The AST for `X if Cond else Y` is:
+recognize these and convert them to `_Cond` type operator calls. The AST for `X if Cond else Y` is:
 
 ```python
 IfExpr(
@@ -510,7 +499,7 @@ IfExpr(
 #### 2.2.2 Extend `expr_to_unanalyzed_type()` (`mypy/fastparse.py`)
 
 The `expr_to_unanalyzed_type()` function converts AST expressions to unanalyzed types.
-Extend it to handle `IfExpr`, converting directly to `ConditionalType`:
+Extend it to handle `IfExpr`, converting to an UnboundType for `_Cond`:
 
 ```python
 def expr_to_unanalyzed_type(
@@ -521,11 +510,13 @@ def expr_to_unanalyzed_type(
     # ... existing cases ...
 
     if isinstance(expr, IfExpr):
-        # Convert ternary directly to ConditionalType
-        return ConditionalType(
-            condition=expr_to_unanalyzed_type(expr.cond, options, ...),
-            true_type=expr_to_unanalyzed_type(expr.body, options, ...),
-            false_type=expr_to_unanalyzed_type(expr.orelse, options, ...),
+        # Convert ternary to _Cond[condition, true_type, false_type]
+        condition = expr_to_unanalyzed_type(expr.cond, options, ...)
+        true_type = expr_to_unanalyzed_type(expr.body, options, ...)
+        false_type = expr_to_unanalyzed_type(expr.orelse, options, ...)
+        return UnboundType(
+            "typing._Cond",
+            [condition, true_type, false_type],
             line=expr.lineno,
             column=expr.col_offset,
         )
@@ -535,28 +526,11 @@ def expr_to_unanalyzed_type(
 
 #### 2.2.3 Handle in Type Analysis (`mypy/typeanal.py`)
 
-`ConditionalType` contains unanalyzed types initially. The `TypeAnalyser` visitor
-analyzes the nested types:
+Since conditional types are now `_Cond[...]` TypeOperatorType, they are analyzed like
+any other type operator via `analyze_type_operator()`. The condition validation happens
+during evaluation in `mypy/typelevel.py`:
 
 ```python
-def visit_conditional_type(self, t: ConditionalType) -> Type:
-    """Analyze the components of a conditional type."""
-    condition = self.anal_type(t.condition)
-    true_type = self.anal_type(t.true_type)
-    false_type = self.anal_type(t.false_type)
-
-    # Validate condition is a IsSub[...] or boolean combination
-    if not self.is_valid_type_condition(condition):
-        self.fail(
-            "Condition in type-level conditional must be IsSub[T, Base] "
-            "or a boolean combination thereof",
-            t
-        )
-        return AnyType(TypeOfAny.from_error)
-
-    return ConditionalType(condition, true_type, false_type, line=t.line, column=t.column)
-
-
 def is_valid_type_condition(self, typ: Type) -> bool:
     """Check if typ is a valid type-level condition (IsSub or boolean combo)."""
     if isinstance(typ, TypeOperatorType):
@@ -612,7 +586,7 @@ from typing import Callable
 from mypy.types import (
     Type, ProperType, Instance, TupleType, UnionType, LiteralType,
     TypedDictType, CallableType, NoneType, AnyType, UninhabitedType,
-    TypeOperatorType, ConditionalType, TypeForComprehension,
+    TypeOperatorType, TypeForComprehension,
 )
 from mypy.subtypes import is_subtype
 from mypy.typeops import get_proper_type
@@ -641,8 +615,6 @@ class TypeLevelEvaluator:
         """Main entry point: evaluate a type to its simplified form."""
         if isinstance(typ, TypeOperatorType):
             return self.eval_operator(typ)
-        elif isinstance(typ, ConditionalType):
-            return self.eval_conditional(typ)
         elif isinstance(typ, TypeForComprehension):
             return self.eval_comprehension(typ)
 
@@ -675,15 +647,18 @@ class TypeLevelEvaluator:
         # Could add support for boolean combinations (and, or, not) here
         return None
 
-    def eval_conditional(self, typ: ConditionalType) -> Type:
-        """Evaluate X if Cond else Y"""
-        result = self.eval_condition(typ.condition)
+    def eval_conditional(self, typ: TypeOperatorType) -> Type:
+        """Evaluate _Cond[condition, TrueType, FalseType]"""
+        if len(typ.args) != 3:
+            return typ
+        condition, true_type, false_type = typ.args
+        result = self.eval_condition(condition)
         if result is True:
-            return self.evaluate(typ.true_type)
+            return self.evaluate(true_type)
         elif result is False:
-            return self.evaluate(typ.false_type)
+            return self.evaluate(false_type)
         else:
-            # Undecidable - keep as ConditionalType
+            # Undecidable - keep as _Cond TypeOperatorType
             return typ
 
     def eval_comprehension(self, typ: TypeForComprehension) -> Type:
@@ -813,6 +788,12 @@ class TypeLevelEvaluator:
 
 
 # --- Operator Implementations ---
+
+@register_operator('typing._Cond')
+def eval_cond(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """Evaluate _Cond[condition, TrueType, FalseType]"""
+    return evaluator.eval_conditional(typ)
+
 
 @register_operator('typing.GetArg')
 def eval_get_arg(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
@@ -1146,19 +1127,16 @@ def has_not_required_qual(quals: Type) -> bool:
 # --- Public API ---
 
 def evaluate_type_operator(typ: TypeOperatorType) -> Type:
-    """Evaluate a TypeOperatorType. Called from TypeOperatorType.expand()."""
+    """Evaluate a TypeOperatorType. Called from TypeOperatorType.expand().
+
+    This handles all type operators including _Cond for conditional types.
+    """
     # Need to get the API somehow - this is a design question
     # Option 1: Pass API through a context variable
     # Option 2: Store API reference on TypeOperatorType
     # Option 3: Create evaluator lazily
     evaluator = TypeLevelEvaluator(...)
     return evaluator.eval_operator(typ)
-
-
-def evaluate_conditional(typ: ConditionalType) -> Type:
-    """Evaluate a ConditionalType. Called from ConditionalType.expand()."""
-    evaluator = TypeLevelEvaluator(...)
-    return evaluator.eval_conditional(typ)
 
 
 def evaluate_comprehension(typ: TypeForComprehension) -> Type:
@@ -1195,12 +1173,9 @@ Extend `ExpandTypeVisitor` to handle new types:
 class ExpandTypeVisitor(TypeTransformVisitor):
     # ... existing methods ...
 
-    def visit_conditional_type(self, t: ConditionalType) -> Type:
-        return ConditionalType(
-            self.expand_condition(t.condition),
-            t.true_type.accept(self),
-            t.false_type.accept(self),
-        )
+    def visit_type_operator_type(self, t: TypeOperatorType) -> Type:
+        # Expand type args, including _Cond which has condition, true_type, false_type as args
+        return t.copy_modified(args=[arg.accept(self) for arg in t.args])
 
     def visit_type_for_comprehension(self, t: TypeForComprehension) -> Type:
         # Don't substitute the iteration variable
@@ -1208,11 +1183,14 @@ class ExpandTypeVisitor(TypeTransformVisitor):
             t.element_expr.accept(self),
             t.iter_var,
             t.iter_type.accept(self),
-            [self.expand_condition(c) for c in t.conditions],
+            [c.accept(self) for c in t.conditions],
         )
 
     # ... more visit methods for other new types ...
 ```
+
+Note: Conditional types are now `_Cond[...]` TypeOperatorType, so they are handled by
+`visit_type_operator_type` along with all other type operators.
 
 ### 4.3 Subtype Checking (`mypy/subtypes.py`)
 
@@ -1222,20 +1200,28 @@ Add subtype rules for new types:
 class SubtypeVisitor(TypeVisitor[bool]):
     # ... existing methods ...
 
-    def visit_conditional_type(self, left: ConditionalType) -> bool:
-        # A conditional type is subtype if both branches are subtypes
+    def visit_type_operator_type(self, left: TypeOperatorType) -> bool:
+        # For _Cond[condition, TrueType, FalseType]: subtype if both branches are subtypes
         # OR if we can evaluate the condition
-        evaluator = TypeLevelEvaluator(...)
-        result = evaluator.eval_condition(left.condition)
+        if left.fullname == 'typing._Cond' and len(left.args) == 3:
+            condition, true_type, false_type = left.args
+            evaluator = TypeLevelEvaluator(...)
+            result = evaluator.eval_condition(condition)
 
-        if result is True:
-            return is_subtype(left.true_type, self.right)
-        elif result is False:
-            return is_subtype(left.false_type, self.right)
-        else:
-            # Must be subtype in both cases
-            return (is_subtype(left.true_type, self.right) and
-                    is_subtype(left.false_type, self.right))
+            if result is True:
+                return is_subtype(true_type, self.right)
+            elif result is False:
+                return is_subtype(false_type, self.right)
+            else:
+                # Must be subtype in both cases
+                return (is_subtype(true_type, self.right) and
+                        is_subtype(false_type, self.right))
+
+        # For other type operators, expand first then check subtype
+        expanded = left.expand()
+        if expanded is not left:
+            return is_subtype(expanded, self.right)
+        return False  # Unevaluatable type operator
 ```
 
 ### 4.4 Type Inference with `**kwargs` TypeVar
@@ -1413,10 +1399,11 @@ Port examples from the PEP:
 5. Tests for basic operations
 
 ### Milestone 2: Conditional Types (Weeks 4-5)
-1. Add `ConditionalType` and condition classes
+1. Add `_Cond` type operator (conditional types are TypeOperatorType, not a separate class)
 2. Add `IsSub` condition operator
-3. Integrate with type evaluator
-4. Tests for conditionals
+3. Implement ternary syntax parsing to `_Cond` conversion
+4. Integrate with type evaluator
+5. Tests for conditionals
 
 ### Milestone 3: Type Comprehensions (Weeks 6-7)
 1. Add `TypeForComprehension`, `IterType`
@@ -1472,7 +1459,7 @@ Port examples from the PEP:
 **Decision**: `GetName`, `GetType`, `GetQuals`, `GetInit`, `GetDefiner` are type aliases using `GetAttr`, not separate type operators. Since `Member` and `Param` are regular classes with attributes, `GetAttr[Member[...], Literal["name"]]` works directly.
 
 ### 3. ComputedType Hierarchy (NOT ProperType)
-**Decision**: All computed types (`TypeOperatorType`, `ConditionalType`, `TypeForComprehension`) inherit from a common `ComputedType` base class. Like `TypeAliasType`, `ComputedType` is NOT a `ProperType` and must be expanded before use in most type operations. This is handled by a single `isinstance(typ, ComputedType)` check in `get_proper_type()`.
+**Decision**: All computed types (`TypeOperatorType`, `TypeForComprehension`) inherit from a common `ComputedType` base class. Like `TypeAliasType`, `ComputedType` is NOT a `ProperType` and must be expanded before use in most type operations. This is handled by a single `isinstance(typ, ComputedType)` check in `get_proper_type()`. Note: Conditional types are represented as `_Cond[...]` TypeOperatorType, not a separate class.
 
 ### 4. Lazy Evaluation with Caching
 **Decision**: Type-level computations are evaluated when needed (e.g., during subtype checking) rather than immediately during parsing. Results should be cached.
@@ -1502,17 +1489,17 @@ Port examples from the PEP:
 - `test-data/unit/check-typelevel-*.test` - Test data
 
 ### Modified Files
-- `mypy/types.py` - Add `ComputedType` base class, `TypeOperatorType`, `ConditionalType`, `TypeForComprehension`
-- `mypy/type_visitor.py` - Add `visit_type_operator_type`, `visit_conditional_type`, `visit_type_for_comprehension`
-- `mypy/fastparse.py` - Extend `expr_to_unanalyzed_type()` to handle `IfExpr` → `ConditionalType`
-- `mypy/typeanal.py` - Detect `@_type_operator` classes, construct `TypeOperatorType`, analyze `ConditionalType`
+- `mypy/types.py` - Add `ComputedType` base class, `TypeOperatorType`, `TypeForComprehension`
+- `mypy/type_visitor.py` - Add `visit_type_operator_type`, `visit_type_for_comprehension`
+- `mypy/fastparse.py` - Extend `expr_to_unanalyzed_type()` to handle `IfExpr` → `_Cond[...]` UnboundType
+- `mypy/typeanal.py` - Detect `@_type_operator` classes, construct `TypeOperatorType`
 - `mypy/typeops.py` - Extend `get_proper_type()` to expand type operators
 - `mypy/expandtype.py` - Handle type variable substitution in type operators
 - `mypy/subtypes.py` - Subtype rules for unevaluated type operators
 - `mypy/checkexpr.py` - kwargs TypedDict inference
 - `mypy/semanal.py` - Detect `@_type_operator` decorator, InitField handling
 - `mypy/nodes.py` - Add `is_type_operator` flag to `TypeInfo`
-- `mypy/typeshed/stdlib/typing.pyi` - Declare type operators with `@_type_operator`, plus `Member`/`Param` as regular generic classes and accessor aliases
+- `mypy/typeshed/stdlib/typing.pyi` - Declare type operators with `@_type_operator` (including `_Cond` for conditionals), plus `Member`/`Param` as regular generic classes and accessor aliases
 
 ---
 
