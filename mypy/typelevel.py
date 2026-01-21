@@ -11,7 +11,7 @@ in a later phase.
 
 from __future__ import annotations
 
-from mypy.types import Type, TypeForComprehension, TypeOperatorType
+from mypy.types import AnyType, Type, TypeForComprehension, TypeOfAny, TypeOperatorType
 
 
 def evaluate_type_operator(typ: TypeOperatorType) -> Type:
@@ -19,8 +19,9 @@ def evaluate_type_operator(typ: TypeOperatorType) -> Type:
 
     Returns the type unchanged if evaluation is not yet possible.
     """
-    # Stub implementation - return the type unchanged
-    return typ
+    # Stub implementation - return Any to avoid infinite loops in get_proper_type
+    # The real implementation will evaluate the type operator and return a concrete type
+    return AnyType(TypeOfAny.special_form)
 
 
 def evaluate_comprehension(typ: TypeForComprehension) -> Type:
@@ -28,5 +29,6 @@ def evaluate_comprehension(typ: TypeForComprehension) -> Type:
 
     Returns the type unchanged if evaluation is not yet possible.
     """
-    # Stub implementation - return the type unchanged
-    return typ
+    # Stub implementation - return Any to avoid infinite loops in get_proper_type
+    # The real implementation will evaluate the comprehension and return a concrete type
+    return AnyType(TypeOfAny.special_form)

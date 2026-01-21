@@ -2168,11 +2168,13 @@ class TypeConverter:
         """Handle ternary expressions in type contexts.
 
         Convert `X if Cond else Y` to `_Cond[Cond, X, Y]`.
+        The _Cond type operator is resolved during type analysis.
         """
         condition = self.visit(n.test)
         true_type = self.visit(n.body)
         false_type = self.visit(n.orelse)
 
+        # Use fully qualified name so it can be resolved without explicit import
         return UnboundType(
             "typing._Cond",
             [condition, true_type, false_type],

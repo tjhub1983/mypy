@@ -66,6 +66,8 @@ def is_invalid_recursive_alias(seen_nodes: set[TypeAlias], target: Type) -> bool
             return True
         assert target.alias, f"Unfixed type alias {target.type_ref}"
         return is_invalid_recursive_alias(seen_nodes | {target.alias}, get_proper_type(target))
+    # Handle ComputedType (TypeOperatorType, TypeForComprehension) by expanding to ProperType
+    target = get_proper_type(target)
     assert isinstance(target, ProperType)
     if not isinstance(target, (UnionType, TupleType)):
         return False
