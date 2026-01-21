@@ -174,3 +174,19 @@ z: ConditionalType = b'lol'  # E: Incompatible types in assignment (expression h
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
+
+[case testTypeOperatorGenericTypeAlias]
+# flags: --python-version 3.14
+# Test generic type alias with conditional type
+from typing import IsSub
+
+type IntOptional[T] = T | None if IsSub[T, int] else T
+
+x0: IntOptional[int]
+reveal_type(x0)  # N: Revealed type is "builtins.int | None"
+
+x1: IntOptional[str]
+reveal_type(x1)  # N: Revealed type is "builtins.str"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]

@@ -5177,6 +5177,13 @@ class SemanticAnalyzer(
 
         # PEP 646 does not specify the behavior of variance, constraints, or bounds.
         if not call.analyzed:
+            # XXX: Since adding a TypeVarTuple to typing.pyi, sometimes
+            # they get processed before builtins.tuple is available.
+            # Fix this by deferring, I guess.
+            if self.lookup_fully_qualified_or_none("builtins.tuple") is None:
+                self.defer()
+                return True
+
             tuple_fallback = self.named_type("builtins.tuple", [self.object_type()])
             typevartuple_var = TypeVarTupleExpr(
                 name,
