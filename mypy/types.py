@@ -556,10 +556,7 @@ class TypeOperatorType(ComputedType):
 
     def copy_modified(self, *, args: list[Type] | None = None) -> TypeOperatorType:
         return TypeOperatorType(
-            self.type,
-            args if args is not None else self.args.copy(),
-            self.line,
-            self.column,
+            self.type, args if args is not None else self.args.copy(), self.line, self.column
         )
 
     def write(self, data: WriteBuffer) -> None:

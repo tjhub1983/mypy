@@ -1239,19 +1239,21 @@ class Param(Generic[_Name, _Type, _Quals]):
 _N = TypeVar("_N", bound=str)
 
 # Convenience aliases for Param
-PosParam: typing_extensions.TypeAlias = Param[_N, _T, Literal["positional"]]
-PosDefaultParam: typing_extensions.TypeAlias = Param[_N, _T, Literal["positional", "default"]]
-DefaultParam: typing_extensions.TypeAlias = Param[_N, _T, Literal["default"]]
-NamedParam: typing_extensions.TypeAlias = Param[_N, _T, Literal["keyword"]]
-NamedDefaultParam: typing_extensions.TypeAlias = Param[_N, _T, Literal["keyword", "default"]]
-ArgsParam: typing_extensions.TypeAlias = Param[None, _T, Literal["*"]]
-KwargsParam: typing_extensions.TypeAlias = Param[None, _T, Literal["**"]]
+
+# XXX: For mysterious reasons, if I mark this as `:
+# typing_extensions.TypeAlias`, mypy thinks _N and _T are unbound...
+PosParam = Param[_N, _T, Literal["positional"]]
+PosDefaultParam = Param[_N, _T, Literal["positional", "default"]]
+DefaultParam = Param[_N, _T, Literal["default"]]
+NamedParam = Param[_N, _T, Literal["keyword"]]
+NamedDefaultParam = Param[_N, _T, Literal["keyword", "default"]]
+ArgsParam = Param[None, _T, Literal["*"]]
+KwargsParam = Param[None, _T, Literal["**"]]
 
 # --- Type Introspection Operators ---
 
 _Base = TypeVar("_Base")
 _Idx = TypeVar("_Idx")
-_S = TypeVar("_S")
 _S1 = TypeVar("_S1")
 _S2 = TypeVar("_S2")
 _Start = TypeVar("_Start")
@@ -1317,11 +1319,11 @@ _MP = TypeVar("_MP", bound=Member[Any, Any, Any, Any, Any] | Param[Any, Any, Any
 _M = TypeVar("_M", bound=Member[Any, Any, Any, Any, Any])
 
 
-GetName: typing_extensions.TypeAlias = GetAttr[_MP, Literal["name"]]
-GetType: typing_extensions.TypeAlias = GetAttr[_MP, Literal["typ"]]
-GetQuals: typing_extensions.TypeAlias = GetAttr[_MP, Literal["quals"]]
-GetInit: typing_extensions.TypeAlias = GetAttr[_M, Literal["init"]]
-GetDefiner: typing_extensions.TypeAlias = GetAttr[_M, Literal["definer"]]
+GetName = GetAttr[_MP, Literal["name"]]
+GetType = GetAttr[_MP, Literal["typ"]]
+GetQuals = GetAttr[_MP, Literal["quals"]]
+GetInit = GetAttr[_M, Literal["init"]]
+GetDefiner = GetAttr[_M, Literal["definer"]]
 
 # --- Type Construction Operators ---
 

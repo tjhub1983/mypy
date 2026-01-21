@@ -11,7 +11,7 @@ in a later phase.
 
 from __future__ import annotations
 
-from mypy.types import ComputedType, Type, TypeForComprehension, TypeOperatorType
+from mypy.types import Type, TypeForComprehension, TypeOperatorType
 
 
 def evaluate_type_operator(typ: TypeOperatorType) -> Type:
