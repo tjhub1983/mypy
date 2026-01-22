@@ -14,23 +14,21 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Final
 
-from mypy.subtypes import is_subtype
+from mypy.expandtype import expand_type
 from mypy.maptype import map_instance_to_supertype
+from mypy.subtypes import is_subtype
 from mypy.types import (
     AnyType,
     Instance,
     LiteralType,
     NoneType,
     ProperType,
-    TrivialSyntheticTypeTranslator,
     TupleType,
     Type,
-    TypeAliasType,
     TypeForComprehension,
     TypeOfAny,
     TypeOperatorType,
     TypeVarType,
-    UnboundType,
     UninhabitedType,
     UnionType,
     UnpackType,
@@ -577,15 +575,16 @@ def evaluate_comprehension(typ: TypeForComprehension) -> Type:
 
     if not isinstance(iter_proper, TupleType):
         # Can only iterate over tuple types
-        return EXPANSION_ANY
+        return UninhabitedType()
 
     # Process each item in the tuple
     result_items: list[Type] = []
+    assert typ.iter_var
     for item in iter_proper.items:
         # Substitute iter_var with item in element_expr and conditions
-        substitutor = VarSubstitutionVisitor(typ.iter_var, item)
-        substituted_expr = typ.element_expr.accept(substitutor)
-        substituted_conditions = [cond.accept(substitutor) for cond in typ.conditions]
+        env = {typ.iter_var.id: item}
+        substituted_expr = expand_type(typ.element_expr, env)
+        substituted_conditions = [expand_type(cond, env) for cond in typ.conditions]
 
         # Evaluate all conditions
         try:
@@ -608,34 +607,3 @@ def evaluate_comprehension(typ: TypeForComprehension) -> Type:
             continue
 
     return UnpackType(evaluator.tuple_type(result_items))
-
-
-class VarSubstitutionVisitor(TrivialSyntheticTypeTranslator):
-    """Type visitor that substitutes UnboundType references to a variable name."""
-
-    def __init__(self, var_name: str, replacement: Type) -> None:
-        super().__init__()
-        self.var_name = var_name
-        self.replacement = replacement
-
-    def visit_unbound_type(self, t: UnboundType) -> Type:
-        if t.name == self.var_name and not t.args:
-            return self.replacement
-        # Also visit the args to substitute nested occurrences
-        if t.args:
-            new_args = [arg.accept(self) for arg in t.args]
-            return UnboundType(
-                t.name,
-                new_args,
-                t.line,
-                t.column,
-                t.optional,
-                t.empty_tuple_index,
-                t.original_str_expr,
-                t.original_str_fallback,
-            )
-        return t
-
-    def visit_type_alias_type(self, t: TypeAliasType) -> Type:
-        # Visit the args to substitute nested occurrences
-        return t.copy_modified(args=[arg.accept(self) for arg in t.args])

@@ -511,7 +511,7 @@ class TypeOperatorType(ComputedType):
         super().__init__(line, column)
         self.type = type
         self.args = args
-        self.type_ref: str | None = None
+        self.type_ref: str | None = None  # XXX?
 
     def accept(self, visitor: TypeVisitor[T]) -> T:
         return visitor.visit_type_operator_type(self)
@@ -585,22 +585,27 @@ class TypeForComprehension(ComputedType):
     Expands to a tuple of types.
     """
 
-    __slots__ = ("element_expr", "iter_var", "iter_type", "conditions")
+    __slots__ = ("element_expr", "iter_name", "iter_type", "conditions", "iter_var")
 
     def __init__(
         self,
         element_expr: Type,
-        iter_var: str,
+        iter_name: str,
         iter_type: Type,  # The type being iterated (should be a tuple type)
         conditions: list[Type],  # Each should be IsSub[...] or boolean combo
+        iter_var: TypeVarType | None = None,  # Typically populated by typeanal
         line: int = -1,
         column: int = -1,
     ) -> None:
         super().__init__(line, column)
         self.element_expr = element_expr
-        self.iter_var = iter_var
+        self.iter_name = iter_name
         self.iter_type = iter_type
         self.conditions = conditions
+        self.iter_var: TypeVarType | None = iter_var
+
+    def type_param(self) -> mypy.nodes.TypeParam:
+        return mypy.nodes.TypeParam(self.iter_name, mypy.nodes.TYPE_VAR_KIND, None, [], None)
 
     def accept(self, visitor: TypeVisitor[T]) -> T:
         return visitor.visit_type_for_comprehension(self)
@@ -612,54 +617,59 @@ class TypeForComprehension(ComputedType):
         return evaluate_comprehension(self)
 
     def __hash__(self) -> int:
-        return hash((self.element_expr, self.iter_var, self.iter_type, tuple(self.conditions)))
+        return hash((self.element_expr, self.iter_name, self.iter_type, tuple(self.conditions)))
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, TypeForComprehension):
             return NotImplemented
         return (
             self.element_expr == other.element_expr
-            and self.iter_var == other.iter_var
+            and self.iter_name == other.iter_name
             and self.iter_type == other.iter_type
             and self.conditions == other.conditions
         )
 
     def __repr__(self) -> str:
         conds = "".join(f" if {c}" for c in self.conditions)
-        return f"TypeForComprehension([{self.element_expr} for {self.iter_var} in {self.iter_type}{conds}])"
+        return f"TypeForComprehension([{self.element_expr} for {self.iter_name} in {self.iter_type}{conds}])"
 
     def serialize(self) -> JsonDict:
         return {
             ".class": "TypeForComprehension",
             "element_expr": self.element_expr.serialize(),
-            "iter_var": self.iter_var,
+            "iter_name": self.iter_name,
             "iter_type": self.iter_type.serialize(),
             "conditions": [c.serialize() for c in self.conditions],
+            "iter_var": self.iter_var.serialize() if self.iter_var else None,
         }
 
     @classmethod
     def deserialize(cls, data: JsonDict) -> TypeForComprehension:
         assert data[".class"] == "TypeForComprehension"
+        var = data["iter_var"]
         return TypeForComprehension(
             deserialize_type(data["element_expr"]),
-            data["iter_var"],
+            data["iter_name"],
             deserialize_type(data["iter_type"]),
             [deserialize_type(c) for c in data["conditions"]],
+            iter_var=cast(TypeVarType, deserialize_type(var)) if var else None,
         )
 
     def copy_modified(
         self,
         *,
         element_expr: Type | None = None,
-        iter_var: str | None = None,
+        iter_name: str | None = None,
         iter_type: Type | None = None,
         conditions: list[Type] | None = None,
+        iter_var: TypeVarType | None = None,  # Typically populated by typeanal
     ) -> TypeForComprehension:
         return TypeForComprehension(
             element_expr if element_expr is not None else self.element_expr,
-            iter_var if iter_var is not None else self.iter_var,
+            iter_name if iter_name is not None else self.iter_name,
             iter_type if iter_type is not None else self.iter_type,
             conditions if conditions is not None else self.conditions.copy(),
+            iter_var if iter_var is not None else self.iter_var,
             self.line,
             self.column,
         )
@@ -667,22 +677,25 @@ class TypeForComprehension(ComputedType):
     def write(self, data: WriteBuffer) -> None:
         write_tag(data, TYPE_FOR_COMPREHENSION)
         self.element_expr.write(data)
-        write_str(data, self.iter_var)
+        write_str(data, self.iter_name)
         self.iter_type.write(data)
         write_int(data, len(self.conditions))
         for cond in self.conditions:
             cond.write(data)
+        write_type_opt(data, self.iter_var)
         write_tag(data, END_TAG)
 
     @classmethod
     def read(cls, data: ReadBuffer) -> TypeForComprehension:
         element_expr = read_type(data)
-        iter_var = read_str(data)
+        iter_name = read_str(data)
         iter_type = read_type(data)
         num_conditions = read_int(data)
         conditions = [read_type(data) for _ in range(num_conditions)]
+        iter_var = cast(TypeVarType | None, read_type_opt(data))
+
         assert read_tag(data) == END_TAG
-        return TypeForComprehension(element_expr, iter_var, iter_type, conditions)
+        return TypeForComprehension(element_expr, iter_name, iter_type, conditions, iter_var)
 
 
 class TypeGuardedType(Type):
@@ -3877,17 +3890,35 @@ def get_proper_type(typ: Type | None) -> ProperType | None:
     on the isinstance() call you pass on the original type (and not one of its components)
     it is recommended to *always* pass on the unexpanded alias.
     """
+    from mypy.expandtype import expand_type
+
     if typ is None:
         return None
     # TODO: this is an ugly hack, remove.
     if isinstance(typ, TypeGuardedType):
         typ = typ.type_guard
+
+    trouble = False
     while True:
         if isinstance(typ, TypeAliasType):
             typ = typ._expand_once()
         elif isinstance(typ, ComputedType):
             # Handles TypeOperatorType, TypeForComprehension
             typ = typ.expand()
+        elif (
+            isinstance(typ, ProperType)
+            and isinstance(typ, TupleType)
+            and any(isinstance(st, ComputedType) for st in typ.items)
+            and not trouble
+        ):
+            # XXX: need to get rid of full get_proper_type calls in expandtype
+            # and cover Instance, Callable
+            # also I'm really not sure about this at all!
+            # this is a lot of work to be doing in get_proper_type
+            typ2 = typ.copy_modified(items=[try_expand(st) for st in typ.items])
+            typ = expand_type(typ2, {})
+            trouble = True
+
         else:
             break
     # TODO: store the name of original type alias on this type, so we can show it in errors.
@@ -3972,10 +4003,13 @@ class TypeStrVisitor(SyntheticTypeVisitor[str]):
      - Represent Union[x, y] as x | y
     """
 
-    def __init__(self, id_mapper: IdMapper | None = None, *, options: Options) -> None:
+    def __init__(
+        self, id_mapper: IdMapper | None = None, expand: bool = False, *, options: Options
+    ) -> None:
         self.id_mapper = id_mapper
         self.options = options
         self.dotted_aliases: set[TypeAliasType] | None = None
+        self.expand = expand
 
     def visit_unbound_type(self, t: UnboundType, /) -> str:
         s = t.name + "?"
@@ -4171,7 +4205,7 @@ class TypeStrVisitor(SyntheticTypeVisitor[str]):
                         )
                     else:
                         vs.append(
-                            f"{var.name}{f' = {var.default.accept(self)}' if var.has_default()  else ''}"
+                            f"{var.name}{f' = {var.default.accept(self)}' if var.has_default() else ''}"
                         )
                 else:
                     # For other TypeVarLikeTypes, use the name and default
@@ -4189,6 +4223,11 @@ class TypeStrVisitor(SyntheticTypeVisitor[str]):
         return f"Overload({', '.join(a)})"
 
     def visit_tuple_type(self, t: TupleType, /) -> str:
+        # Expand computed comprehensions
+        if self.expand:
+            if (nt := try_expand_or_none(t)) and nt != t:
+                return nt.accept(self)
+
         s = self.list_str(t.items) or "()"
         if t.partial_fallback and t.partial_fallback.type:
             fallback_name = t.partial_fallback.type.fullname
@@ -4272,6 +4311,9 @@ class TypeStrVisitor(SyntheticTypeVisitor[str]):
         return f"Unpack[{t.type.accept(self)}]"
 
     def visit_type_operator_type(self, t: TypeOperatorType, /) -> str:
+        if self.expand and (t2 := try_expand_or_none(t)):
+            return t2.accept(self)
+
         name = t.type.fullname if t.type else "<unfixed>"
         return f"{name}[{self.list_str(t.args)}]"
 
@@ -4279,7 +4321,10 @@ class TypeStrVisitor(SyntheticTypeVisitor[str]):
         conditions = ""
         if t.conditions:
             conditions = " if " + " if ".join(c.accept(self) for c in t.conditions)
-        return f"*[{t.element_expr.accept(self)} for {t.iter_var} in {t.iter_type.accept(self)}{conditions}]"
+        v = t.iter_var.accept(self) if t.iter_var else f"~{t.iter_name}"
+        return (
+            f"*[{t.element_expr.accept(self)} for {v} in {t.iter_type.accept(self)}{conditions}]"
+        )
 
     def list_str(self, a: Iterable[Type], *, use_or_syntax: bool = False) -> str:
         """Convert items of an array to strings (pretty-print types)

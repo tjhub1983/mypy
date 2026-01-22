@@ -352,7 +352,7 @@ reveal_type(args)  # N: Revealed type is "tuple[builtins.int, builtins.str]"
 from typing import IsSub, Iter
 
 # Basic comprehension - maps over tuple elements
-def f(x: tuple[*[T for T in Iter[tuple[int, str, float]]]]) -> None:  # E: Name "T" is not defined
+def f(x: tuple[*[T for T in Iter[tuple[int, str, float]]]]) -> None:
     pass
 
 reveal_type(f)  # N: Revealed type is "def (x: tuple[builtins.int, builtins.str, builtins.float])"
@@ -365,7 +365,7 @@ reveal_type(f)  # N: Revealed type is "def (x: tuple[builtins.int, builtins.str,
 from typing import IsSub, Iter
 
 # Filter elements - only keep subtypes of int (int, bool)
-def f(x: tuple[*[T for T in Iter[tuple[int, str, bool, float]] if IsSub[T, int]]]) -> None:  # E: Name "T" is not defined
+def f(x: tuple[*[T for T in Iter[tuple[int, str, bool, float]] if IsSub[T, int]]]) -> None:
     pass
 
 reveal_type(f)  # N: Revealed type is "def (x: tuple[builtins.int, builtins.bool])"

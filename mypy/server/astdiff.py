@@ -534,7 +534,7 @@ class SnapshotTypeVisitor(TypeVisitor[SnapshotItem]):
         return (
             "TypeForComprehension",
             snapshot_type(typ.element_expr),
-            typ.iter_var,
+            typ.iter_name,
             snapshot_type(typ.iter_type),
             snapshot_types(typ.conditions),
         )

@@ -7568,6 +7568,7 @@ class SemanticAnalyzer(
             # later on. Defer current target.
             self.record_incomplete_ref()
             return
+
         message = f'Name "{name}" is not defined'
         self.fail(message, ctx, code=codes.NAME_DEFINED)
 

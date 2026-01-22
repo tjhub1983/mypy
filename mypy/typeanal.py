@@ -1133,73 +1133,34 @@ class TypeAnalyser(SyntheticTypeVisitor[Type], TypeAnalyzerPluginInterface):
         return TypeOperatorType(type_info, an_args, t.line, t.column)
 
     def visit_type_operator_type(self, t: TypeOperatorType) -> Type:
-        # Type operators are analyzed elsewhere
-        return t
+        return t.copy_modified(args=self.anal_array(t.args, allow_unpack=True))
 
     def visit_type_for_comprehension(self, t: TypeForComprehension) -> Type:
-        """Analyze and evaluate a type comprehension.
+        from mypy.semanal import SemanticAnalyzer
 
-        Type comprehensions are expanded during type analysis since we have
-        access to the semantic analyzer API at this point. The result is an
-        UnpackType wrapping a TupleType of all produced elements.
+        sem = self.api
+        assert isinstance(sem, SemanticAnalyzer)
 
-        The iteration variable (iter_var) is a local binding within the
-        comprehension, so we use special handling to substitute it with each
-        element from the iterable.
-        """
-        from mypy.typelevel import (
-            VarSubstitutionVisitor,
-            extract_literal_bool,
-            EvaluationStuck,
-            typelevel_ctx,
-            TypeLevelEvaluator,
-        )
+        iter_type = self.anal_type(t.iter_type)
 
-        # Analyze the iter_type first - this is outside the comprehension scope
-        analyzed_iter = self.anal_type(t.iter_type, allow_unpack=True)
-        iter_proper = get_proper_type(analyzed_iter)
+        with self.tvar_scope_frame("<Iter>"):
+            targs = [t.type_param()]
+            var_exprs = sem.push_type_args(targs, t)
+            assert var_exprs
 
-        if not isinstance(iter_proper, TupleType):
-            # Can't evaluate - return Any (wrapped in Unpack)
-            return UnpackType(
-                TupleType([AnyType(TypeOfAny.from_error)], self.named_type("builtins.tuple"))
+            iter_var = self.tvar_scope.bind_new(t.iter_name, var_exprs[0][1], self.fail_func, t)
+            assert isinstance(iter_var, TypeVarType), type(iter_var)
+
+            analt = t.copy_modified(
+                element_expr=self.anal_type(t.element_expr),
+                iter_type=iter_type,
+                conditions=self.anal_array(t.conditions),
+                iter_var=iter_var,
             )
 
-        # Process each item in the tuple
-        result_items: list[Type] = []
-        for item in iter_proper.items:
-            # Substitute iter_var with item in element_expr and conditions
-            substitutor = VarSubstitutionVisitor(t.iter_var, item)
-            substituted_expr = t.element_expr.accept(substitutor)
-            substituted_conditions = [cond.accept(substitutor) for cond in t.conditions]
+            sem.pop_type_args(targs)
 
-            # Analyze the substituted expression and expand any computed types
-            analyzed_expr = self.anal_type(substituted_expr, allow_unpack=True)
-            analyzed_expr = get_proper_type(analyzed_expr)
-
-            # Evaluate all conditions
-            try:
-                all_pass = True
-                for cond in substituted_conditions:
-                    analyzed_cond = self.anal_type(cond, allow_unpack=True)
-                    # Use typelevel_ctx.api if available for condition evaluation
-                    if typelevel_ctx.api is not None:
-                        evaluator = TypeLevelEvaluator(typelevel_ctx.api)
-                        cond_result = extract_literal_bool(evaluator.evaluate(analyzed_cond))
-                        if cond_result is False:
-                            all_pass = False
-                            break
-                        # If cond_result is None (undecidable), include the item
-
-                if all_pass:
-                    result_items.append(analyzed_expr)
-            except EvaluationStuck:
-                # Include item if evaluation gets stuck
-                result_items.append(analyzed_expr)
-
-        # Return UnpackType wrapping a TupleType
-        tuple_fallback = self.named_type("builtins.tuple")
-        return UnpackType(TupleType(result_items, tuple_fallback))
+        return analt
 
     def visit_type_var(self, t: TypeVarType) -> Type:
         return t
@@ -2706,6 +2667,7 @@ class FindTypeVarVisitor(SyntheticTypeVisitor[None]):
         self.type_var_likes: list[tuple[str, TypeVarLikeExpr]] = []
         self.has_self_type = False
         self.include_callables = True
+        self.internal_vars: set[str] = set()
 
     def _seems_like_callable(self, type: UnboundType) -> bool:
         if not type.args:
@@ -2714,6 +2676,10 @@ class FindTypeVarVisitor(SyntheticTypeVisitor[None]):
 
     def visit_unbound_type(self, t: UnboundType) -> None:
         name = t.name
+        # We don't want to collect the iterator variables, and we
+        # really don't want to bother to put them in the symbol table.
+        if name in self.internal_vars:
+            return
         node = self.api.lookup_qualified(name, t)
         if node and node.fullname in SELF_TYPE_NAMES:
             self.has_self_type = True
@@ -2820,9 +2786,16 @@ class FindTypeVarVisitor(SyntheticTypeVisitor[None]):
         self.process_types(t.args)
 
     def visit_type_for_comprehension(self, t: TypeForComprehension) -> None:
-        t.element_expr.accept(self)
         t.iter_type.accept(self)
+
+        shadowed = t.iter_name in self.internal_vars
+        self.internal_vars.add(t.iter_name)
+
+        t.element_expr.accept(self)
         self.process_types(t.conditions)
+
+        if not shadowed:
+            self.internal_vars.discard(t.iter_name)
 
     def process_types(self, types: list[Type] | tuple[Type, ...]) -> None:
         # Redundant type check helps mypyc.

@@ -237,6 +237,8 @@ class TypeArgumentAnalyzer(MixedTraverserVisitor):
                     )
             elif isinstance(tvar, TypeVarTupleType):
                 p_arg = get_proper_type(arg)
+                # XXX: get_proper_type could possibly mess things up
+                # now that it might evaluate
                 assert isinstance(p_arg, TupleType)
                 for it in p_arg.items:
                     if self.check_non_paramspec(it, "TypeVarTuple", context):

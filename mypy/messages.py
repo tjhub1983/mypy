@@ -1749,7 +1749,7 @@ class MessageBuilder:
                 return
 
         # Nothing special here; just create the note:
-        visitor = TypeStrVisitor(options=self.options)
+        visitor = TypeStrVisitor(expand=True, options=self.options)
         self.note(f'Revealed type is "{typ.accept(visitor)}"', context)
 
     def reveal_locals(self, type_map: dict[str, Type | None], context: Context) -> None:

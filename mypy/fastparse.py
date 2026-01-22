@@ -2172,7 +2172,9 @@ class TypeConverter:
         """Convert *[Expr for var in Iter if Cond] to TypeForComprehension."""
         # Currently only support single generator
         if len(n.generators) != 1:
-            return self.invalid_type(n, note="Type comprehensions only support a single 'for' clause")
+            return self.invalid_type(
+                n, note="Type comprehensions only support a single 'for' clause"
+            )
 
         gen = n.generators[0]
 
@@ -2180,14 +2182,14 @@ class TypeConverter:
         if not isinstance(gen.target, ast3.Name):
             return self.invalid_type(n, note="Type comprehension variable must be a simple name")
 
-        iter_var = gen.target.id
+        iter_name = gen.target.id
         element_expr = self.visit(n.elt)
         iter_type = self.visit(gen.iter)
         conditions = [self.visit(cond) for cond in gen.ifs]
 
         return TypeForComprehension(
             element_expr=element_expr,
-            iter_var=iter_var,
+            iter_name=iter_name,
             iter_type=iter_type,
             conditions=conditions,
             line=self.line,

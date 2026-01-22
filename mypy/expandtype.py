@@ -50,6 +50,9 @@ import mypy.type_visitor  # ruff: isort: skip
 # is_subtype(), meet_types(), join_types() etc.
 # TODO: add a static dependency test for this.
 
+# XXX: The changes to get_proper_type to do type-level computation
+# breaks this invariant! I think we need another layer of indirection!
+
 
 @overload
 def expand_type(typ: CallableType, env: Mapping[TypeVarId, Type]) -> CallableType: ...
@@ -387,8 +390,14 @@ class ExpandTypeVisitor(TrivialSyntheticTypeTranslator):
         return UnpackType(t.type.accept(self))
 
     def expand_unpack(self, t: UnpackType) -> list[Type]:
-        assert isinstance(t.type, TypeVarTupleType)
-        repl = get_proper_type(self.variables.get(t.type.id, t.type))
+        if isinstance(t.type, TypeVarTupleType):
+            t2 = self.variables.get(t.type.id, t.type)
+            fallback = t.type.tuple_fallback
+        else:
+            assert isinstance(t.type, ProperType) and isinstance(t.type, TupleType)
+            t2 = t.type
+            fallback = t2.partial_fallback
+        repl = get_proper_type(t2)
         if isinstance(repl, UnpackType):
             repl = get_proper_type(repl.type)
         if isinstance(repl, TupleType):
@@ -402,7 +411,7 @@ class ExpandTypeVisitor(TrivialSyntheticTypeTranslator):
         elif isinstance(repl, (AnyType, UninhabitedType)):
             # Replace *Ts = Any with *Ts = *tuple[Any, ...] and same for Never.
             # These types may appear here as a result of user error or failed inference.
-            return [UnpackType(t.type.tuple_fallback.copy_modified(args=[repl]))]
+            return [UnpackType(fallback.copy_modified(args=[repl]))]
         else:
             raise RuntimeError(f"Invalid type replacement to expand: {repl}")
 
@@ -516,7 +525,10 @@ class ExpandTypeVisitor(TrivialSyntheticTypeTranslator):
         """Expands a list of types that has an unpack."""
         items: list[Type] = []
         for item in typs:
-            if isinstance(item, UnpackType) and isinstance(item.type, TypeVarTupleType):
+            if isinstance(item, UnpackType) and (
+                isinstance(item.type, TypeVarTupleType)
+                or (isinstance(item.type, ProperType) and isinstance(item.type, TupleType))
+            ):
                 items.extend(self.expand_unpack(item))
             else:
                 items.append(item.accept(self))
@@ -527,7 +539,10 @@ class ExpandTypeVisitor(TrivialSyntheticTypeTranslator):
         # Micro-optimization: Specialized variant of expand_type_list_with_unpack
         items: list[Type] = []
         for item in typs:
-            if isinstance(item, UnpackType) and isinstance(item.type, TypeVarTupleType):
+            if isinstance(item, UnpackType) and (
+                isinstance(item.type, TypeVarTupleType)
+                or (isinstance(item.type, ProperType) and isinstance(item.type, TupleType))
+            ):
                 items.extend(self.expand_unpack(item))
             else:
                 items.append(item.accept(self))
