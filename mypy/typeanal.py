@@ -1137,8 +1137,69 @@ class TypeAnalyser(SyntheticTypeVisitor[Type], TypeAnalyzerPluginInterface):
         return t
 
     def visit_type_for_comprehension(self, t: TypeForComprehension) -> Type:
-        # Type comprehensions are analyzed elsewhere
-        return t
+        """Analyze and evaluate a type comprehension.
+
+        Type comprehensions are expanded during type analysis since we have
+        access to the semantic analyzer API at this point. The result is an
+        UnpackType wrapping a TupleType of all produced elements.
+
+        The iteration variable (iter_var) is a local binding within the
+        comprehension, so we use special handling to substitute it with each
+        element from the iterable.
+        """
+        from mypy.typelevel import (
+            VarSubstitutionVisitor,
+            extract_literal_bool,
+            EvaluationStuck,
+            typelevel_ctx,
+            TypeLevelEvaluator,
+        )
+
+        # Analyze the iter_type first - this is outside the comprehension scope
+        analyzed_iter = self.anal_type(t.iter_type, allow_unpack=True)
+        iter_proper = get_proper_type(analyzed_iter)
+
+        if not isinstance(iter_proper, TupleType):
+            # Can't evaluate - return Any (wrapped in Unpack)
+            return UnpackType(
+                TupleType([AnyType(TypeOfAny.from_error)], self.named_type("builtins.tuple"))
+            )
+
+        # Process each item in the tuple
+        result_items: list[Type] = []
+        for item in iter_proper.items:
+            # Substitute iter_var with item in element_expr and conditions
+            substitutor = VarSubstitutionVisitor(t.iter_var, item)
+            substituted_expr = t.element_expr.accept(substitutor)
+            substituted_conditions = [cond.accept(substitutor) for cond in t.conditions]
+
+            # Analyze the substituted expression and expand any computed types
+            analyzed_expr = self.anal_type(substituted_expr, allow_unpack=True)
+            analyzed_expr = get_proper_type(analyzed_expr)
+
+            # Evaluate all conditions
+            try:
+                all_pass = True
+                for cond in substituted_conditions:
+                    analyzed_cond = self.anal_type(cond, allow_unpack=True)
+                    # Use typelevel_ctx.api if available for condition evaluation
+                    if typelevel_ctx.api is not None:
+                        evaluator = TypeLevelEvaluator(typelevel_ctx.api)
+                        cond_result = extract_literal_bool(evaluator.evaluate(analyzed_cond))
+                        if cond_result is False:
+                            all_pass = False
+                            break
+                        # If cond_result is None (undecidable), include the item
+
+                if all_pass:
+                    result_items.append(analyzed_expr)
+            except EvaluationStuck:
+                # Include item if evaluation gets stuck
+                result_items.append(analyzed_expr)
+
+        # Return UnpackType wrapping a TupleType
+        tuple_fallback = self.named_type("builtins.tuple")
+        return UnpackType(TupleType(result_items, tuple_fallback))
 
     def visit_type_var(self, t: TypeVarType) -> Type:
         return t

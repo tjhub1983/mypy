@@ -238,6 +238,9 @@ class TypeAliasType:
 def _type_operator(cls: type[T]) -> type[T]: ...
 
 @_type_operator
+class Iter(Generic[T]): ...
+
+@_type_operator
 class IsSub(Generic[T, U]): ...
 
 @_type_operator

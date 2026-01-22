@@ -117,11 +117,13 @@ from mypy.types import (
     TupleType,
     Type,
     TypedDictType,
+    TypeForComprehension,
     TypeList,
     TypeOfAny,
     UnboundType,
     UnionType,
     UnpackType,
+    get_proper_type,
 )
 from mypy.util import bytes_to_human_readable_repr, unnamed_function
 
@@ -292,7 +294,7 @@ def parse_type_ignore_tag(tag: str | None) -> list[str] | None:
 
 def parse_type_comment(
     type_comment: str, line: int, column: int, errors: Errors | None
-) -> tuple[list[str] | None, ProperType | None]:
+) -> tuple[list[str] | None, Type | None]:
     """Parse type portion of a type comment (+ optional type ignore).
 
     Return (ignore info, parsed type).
@@ -338,12 +340,14 @@ def parse_type_string(
     """
     try:
         _, node = parse_type_comment(f"({expr_string})", line=line, column=column, errors=None)
-        if isinstance(node, (UnboundType, UnionType)) and node.original_str_expr is None:
-            node.original_str_expr = expr_string
-            node.original_str_fallback = expr_fallback_name
-            return node
-        else:
-            return RawExpressionType(expr_string, expr_fallback_name, line, column)
+        # node is Type | None but we need to check for specific ProperTypes
+        if node is not None:
+            proper = get_proper_type(node)
+            if isinstance(proper, (UnboundType, UnionType)) and proper.original_str_expr is None:
+                proper.original_str_expr = expr_string
+                proper.original_str_fallback = expr_fallback_name
+                return proper
+        return RawExpressionType(expr_string, expr_fallback_name, line, column)
     except (SyntaxError, ValueError):
         # Note: the parser will raise a `ValueError` instead of a SyntaxError if
         # the string happens to contain things like \x00.
@@ -528,7 +532,7 @@ class ASTConverter:
 
     def translate_type_comment(
         self, n: ast3.stmt | ast3.arg, type_comment: str | None
-    ) -> ProperType | None:
+    ) -> Type | None:
         if type_comment is None:
             return None
         else:
@@ -1911,12 +1915,12 @@ class TypeConverter:
         )
 
     @overload
-    def visit(self, node: ast3.expr) -> ProperType: ...
+    def visit(self, node: ast3.expr) -> Type: ...
 
     @overload
-    def visit(self, node: AST | None) -> ProperType | None: ...
+    def visit(self, node: AST | None) -> Type | None: ...
 
-    def visit(self, node: AST | None) -> ProperType | None:
+    def visit(self, node: AST | None) -> Type | None:
         """Modified visit -- keep track of the stack of nodes"""
         if node is None:
             return None
@@ -1926,7 +1930,7 @@ class TypeConverter:
             visitor = getattr(self, method, None)
             if visitor is not None:
                 typ = visitor(node)
-                assert isinstance(typ, ProperType)
+                assert isinstance(typ, Type)
                 return typ
             else:
                 return self.invalid_type(node)
@@ -2132,11 +2136,14 @@ class TypeConverter:
         if not n.keys:
             return self.invalid_type(n)
         items: dict[str, Type] = {}
-        extra_items_from = []
+        extra_items_from: list[ProperType] = []
         for item_name, value in zip(n.keys, n.values):
             if not isinstance(item_name, ast3.Constant) or not isinstance(item_name.value, str):
                 if item_name is None:
-                    extra_items_from.append(self.visit(value))
+                    visited = self.visit(value)
+                    # TypedDict spread values should be ProperTypes
+                    assert isinstance(visited, ProperType)
+                    extra_items_from.append(visited)
                     continue
                 return self.invalid_type(n)
             items[item_name.value] = self.visit(value)
@@ -2154,8 +2161,38 @@ class TypeConverter:
             return self.invalid_type(n)
 
     # Used for Callable[[X *Ys, Z], R] etc.
+    # Also handles type comprehensions: *[Expr for var in Iter if Cond]
     def visit_Starred(self, n: ast3.Starred) -> Type:
+        # Check if this is a list comprehension (type comprehension syntax)
+        if isinstance(n.value, ast3.ListComp):
+            return self.visit_ListComp_as_type(n.value)
         return UnpackType(self.visit(n.value), from_star_syntax=True)
+
+    def visit_ListComp_as_type(self, n: ast3.ListComp) -> Type:
+        """Convert *[Expr for var in Iter if Cond] to TypeForComprehension."""
+        # Currently only support single generator
+        if len(n.generators) != 1:
+            return self.invalid_type(n, note="Type comprehensions only support a single 'for' clause")
+
+        gen = n.generators[0]
+
+        # The target should be a simple name
+        if not isinstance(gen.target, ast3.Name):
+            return self.invalid_type(n, note="Type comprehension variable must be a simple name")
+
+        iter_var = gen.target.id
+        element_expr = self.visit(n.elt)
+        iter_type = self.visit(gen.iter)
+        conditions = [self.visit(cond) for cond in gen.ifs]
+
+        return TypeForComprehension(
+            element_expr=element_expr,
+            iter_var=iter_var,
+            iter_type=iter_type,
+            conditions=conditions,
+            line=self.line,
+            column=self.convert_column(n.col_offset),
+        )
 
     # List(expr* elts, expr_context ctx)
     def visit_List(self, n: ast3.List) -> Type:

@@ -22,14 +22,18 @@ from mypy.types import (
     LiteralType,
     NoneType,
     ProperType,
+    TrivialSyntheticTypeTranslator,
     TupleType,
     Type,
+    TypeAliasType,
     TypeForComprehension,
     TypeOfAny,
     TypeOperatorType,
     TypeVarType,
+    UnboundType,
     UninhabitedType,
     UnionType,
+    UnpackType,
     get_proper_type,
     has_type_vars,
     is_stuck_expansion,
@@ -234,6 +238,22 @@ def _eval_cond(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
         # Undecidable - return Any for now
         # In the future, we might want to keep the conditional and defer evaluation
         return EXPANSION_ANY
+
+
+@register_operator("typing.Iter")
+def _eval_iter(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """Evaluate a type-level iterator (Iter[T])."""
+    if len(typ.args) != 1:
+        return UninhabitedType()  # ???
+
+    target = evaluator.eval_proper(typ.args[0])
+    if isinstance(target, TupleType):
+        # Check for unbounded tuple (has ..., represented by partial_fallback)
+        if target.partial_fallback and not target.items:
+            return UninhabitedType()
+        return target
+    else:
+        return UninhabitedType()
 
 
 @register_operator("typing.IsSub")
@@ -541,7 +561,81 @@ def evaluate_type_operator(typ: TypeOperatorType) -> Type:
 def evaluate_comprehension(typ: TypeForComprehension) -> Type:
     """Evaluate a TypeForComprehension. Called from TypeForComprehension.expand().
 
-    Returns Any for now - full implementation in Phase 3B.
+    Evaluates *[Expr for var in Iter if Cond] to UnpackType(TupleType([...])).
     """
-    # Stub implementation - return Any to avoid infinite loops in get_proper_type
-    return EXPANSION_ANY
+    if typelevel_ctx.api is None:
+        # API not available yet - return stuck expansion marker
+        return EXPANSION_ANY
+
+    evaluator = TypeLevelEvaluator(typelevel_ctx.api)
+
+    try:
+        # Get the iterable type and expand it to a TupleType
+        iter_proper = evaluator.eval_proper(typ.iter_type)
+    except EvaluationStuck:
+        return EXPANSION_ANY
+
+    if not isinstance(iter_proper, TupleType):
+        # Can only iterate over tuple types
+        return EXPANSION_ANY
+
+    # Process each item in the tuple
+    result_items: list[Type] = []
+    for item in iter_proper.items:
+        # Substitute iter_var with item in element_expr and conditions
+        substitutor = VarSubstitutionVisitor(typ.iter_var, item)
+        substituted_expr = typ.element_expr.accept(substitutor)
+        substituted_conditions = [cond.accept(substitutor) for cond in typ.conditions]
+
+        # Evaluate all conditions
+        try:
+            all_pass = True
+            for cond in substituted_conditions:
+                cond_result = extract_literal_bool(evaluator.evaluate(cond))
+                if cond_result is False:
+                    all_pass = False
+                    break
+                elif cond_result is None:
+                    # Undecidable condition - skip this item
+                    all_pass = False
+                    break
+
+            if all_pass:
+                # Include this element in the result
+                result_items.append(substituted_expr)
+        except EvaluationStuck:
+            # Skip items that cause stuck evaluation
+            continue
+
+    return UnpackType(evaluator.tuple_type(result_items))
+
+
+class VarSubstitutionVisitor(TrivialSyntheticTypeTranslator):
+    """Type visitor that substitutes UnboundType references to a variable name."""
+
+    def __init__(self, var_name: str, replacement: Type) -> None:
+        super().__init__()
+        self.var_name = var_name
+        self.replacement = replacement
+
+    def visit_unbound_type(self, t: UnboundType) -> Type:
+        if t.name == self.var_name and not t.args:
+            return self.replacement
+        # Also visit the args to substitute nested occurrences
+        if t.args:
+            new_args = [arg.accept(self) for arg in t.args]
+            return UnboundType(
+                t.name,
+                new_args,
+                t.line,
+                t.column,
+                t.optional,
+                t.empty_tuple_index,
+                t.original_str_expr,
+                t.original_str_fallback,
+            )
+        return t
+
+    def visit_type_alias_type(self, t: TypeAliasType) -> Type:
+        # Visit the args to substitute nested occurrences
+        return t.copy_modified(args=[arg.accept(self) for arg in t.args])
