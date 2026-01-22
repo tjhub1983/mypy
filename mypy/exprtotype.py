@@ -18,6 +18,7 @@ from mypy.nodes import (
     FloatExpr,
     IndexExpr,
     IntExpr,
+    ListComprehension,
     ListExpr,
     MemberExpr,
     NameExpr,
@@ -41,6 +42,7 @@ from mypy.types import (
     RawExpressionType,
     Type,
     TypedDictType,
+    TypeForComprehension,
     TypeList,
     TypeOfAny,
     UnboundType,
@@ -69,7 +71,7 @@ def expr_to_unanalyzed_type(
     _parent: Expression | None = None,
     allow_unpack: bool = False,
     lookup_qualified: Callable[[str, Context], SymbolTableNode | None] | None = None,
-) -> ProperType:
+) -> Type:
     """Translate an expression to the corresponding type.
 
     The result is not semantically analyzed. It can be UnboundType or TypeList.
@@ -253,6 +255,37 @@ def expr_to_unanalyzed_type(
     elif isinstance(expr, EllipsisExpr):
         return EllipsisType(expr.line)
     elif allow_unpack and isinstance(expr, StarExpr):
+        # Check if this is a type comprehension: *[Expr for var in Iter if Cond]
+        if isinstance(expr.expr, ListComprehension):
+            gen = expr.expr.generator
+            # Only support single generator
+            if len(gen.sequences) != 1:
+                raise TypeTranslationError()
+            # The index should be a simple name
+            index = gen.indices[0]
+            if not isinstance(index, NameExpr):
+                raise TypeTranslationError()
+            iter_name = index.name
+            element_expr = expr_to_unanalyzed_type(
+                gen.left_expr, options, allow_new_syntax, lookup_qualified=lookup_qualified
+            )
+            iter_type = expr_to_unanalyzed_type(
+                gen.sequences[0], options, allow_new_syntax, lookup_qualified=lookup_qualified
+            )
+            conditions: list[Type] = [
+                expr_to_unanalyzed_type(
+                    cond, options, allow_new_syntax, lookup_qualified=lookup_qualified
+                )
+                for cond in gen.condlists[0]
+            ]
+            return TypeForComprehension(
+                element_expr=element_expr,
+                iter_name=iter_name,
+                iter_type=iter_type,
+                conditions=conditions,
+                line=expr.line,
+                column=expr.column,
+            )
         return UnpackType(
             expr_to_unanalyzed_type(
                 expr.expr, options, allow_new_syntax, lookup_qualified=lookup_qualified
@@ -263,19 +296,20 @@ def expr_to_unanalyzed_type(
         if not expr.items:
             raise TypeTranslationError()
         items: dict[str, Type] = {}
-        extra_items_from = []
+        extra_items_from: list[ProperType] = []
         for item_name, value in expr.items:
             if not isinstance(item_name, StrExpr):
                 if item_name is None:
-                    extra_items_from.append(
-                        expr_to_unanalyzed_type(
-                            value,
-                            options,
-                            allow_new_syntax,
-                            expr,
-                            lookup_qualified=lookup_qualified,
-                        )
+                    typ = expr_to_unanalyzed_type(
+                        value,
+                        options,
+                        allow_new_syntax,
+                        expr,
+                        lookup_qualified=lookup_qualified,
                     )
+                    # TypedDict spread values should be ProperTypes
+                    assert isinstance(typ, ProperType)
+                    extra_items_from.append(typ)
                     continue
                 raise TypeTranslationError()
             items[item_name.value] = expr_to_unanalyzed_type(

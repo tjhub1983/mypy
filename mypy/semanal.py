@@ -6060,6 +6060,8 @@ class SemanticAnalyzer(
             except TypeTranslationError:
                 self.fail("Argument 1 to _promote is not a type", expr)
                 return
+            # _promote should only be used with proper types
+            assert isinstance(target, ProperType)
             expr.analyzed = PromoteExpr(target)
             expr.analyzed.line = expr.line
             expr.analyzed.accept(self)
@@ -7800,7 +7802,7 @@ class SemanticAnalyzer(
         tpan.global_scope = not self.type and not self.function_stack
         return tpan
 
-    def expr_to_unanalyzed_type(self, node: Expression, allow_unpack: bool = False) -> ProperType:
+    def expr_to_unanalyzed_type(self, node: Expression, allow_unpack: bool = False) -> Type:
         return expr_to_unanalyzed_type(
             node, self.options, self.is_stub_file, allow_unpack=allow_unpack
         )
