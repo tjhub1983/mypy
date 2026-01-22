@@ -15,6 +15,7 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING, Final
 
 from mypy.subtypes import is_subtype
+from mypy.maptype import map_instance_to_supertype
 from mypy.types import (
     AnyType,
     Instance,
@@ -503,40 +504,18 @@ def _eval_length(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
 # --- Helper Functions ---
 
 
-def get_type_args_for_base(instance: Instance, base_type: TypeInfo) -> list[Type] | None:
+def get_type_args_for_base(instance: Instance, base_type: TypeInfo) -> tuple[Type, ...] | None:
     """Get type args when viewing instance as base class.
 
     Returns None if instance is not a subtype of base_type.
     """
-    # Direct match
-    if instance.type == base_type:
-        return list(instance.args)
+    # Check if base_type is in the MRO. (map_instance_to_supertype
+    # doesn't have a way to signal when it isn't; it just fills the
+    # type with Anys)
+    if base_type not in instance.type.mro:
+        return None
 
-    # Walk the MRO to find the base and map type arguments
-    for base in instance.type.mro:
-        if base == base_type:
-            return map_type_args_to_base(instance, base_type)
-
-    return None
-
-
-def map_type_args_to_base(instance: Instance, base: TypeInfo) -> list[Type]:
-    """Map instance's type args through inheritance chain to base."""
-    from mypy.expandtype import expand_type_by_instance
-
-    # Find the base in the direct bases and expand
-    # XXX: I think this is wrong
-    for b_proper in instance.type.bases:
-        if b_proper.type == base:
-            expanded = expand_type_by_instance(b_proper, instance)
-            if isinstance(expanded, Instance):
-                return list(expanded.args)
-            return []
-
-    # Need to walk through intermediate bases
-    # This is a simplified version - a full implementation would need to
-    # recursively expand through the entire inheritance chain
-    return []
+    return map_instance_to_supertype(instance, base_type).args
 
 
 # --- Public API ---

@@ -267,3 +267,82 @@ reveal_type(y)  # N: Revealed type is "Literal[1]"
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
+
+[case testTypeOperatorGetArg1]
+# Test GetArg operator
+from typing import Generic, TypeVar, GetArg, Literal
+
+T = TypeVar('T')
+U = TypeVar('U')
+
+class MyGeneric(Generic[T, U]):
+    pass
+
+# Get first type arg
+x: GetArg[MyGeneric[int, str], MyGeneric, Literal[0]]
+reveal_type(x)  # N: Revealed type is "builtins.int"
+
+# Get second type arg
+y: GetArg[MyGeneric[int, str], MyGeneric, Literal[1]]
+reveal_type(y)  # N: Revealed type is "builtins.str"
+
+# Works with list
+z: GetArg[list[float], list, Literal[0]]
+reveal_type(z)  # N: Revealed type is "builtins.float"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testTypeOperatorGetArg2]
+# Test GetArg operator
+from typing import Generic, TypeVar, GetArg, Literal
+
+T = TypeVar('T')
+U = TypeVar('U')
+
+class MyGeneric(Generic[T, U]):
+    pass
+
+class Concrete(MyGeneric[int, str]):
+    pass
+
+# Get first type arg
+x: GetArg[Concrete, MyGeneric, Literal[0]]
+reveal_type(x)  # N: Revealed type is "builtins.int"
+
+# Get second type arg
+y: GetArg[Concrete, MyGeneric, Literal[1]]
+reveal_type(y)  # N: Revealed type is "builtins.str"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testTypeOperatorGetArg3]
+# Test GetArg operator
+from typing import Generic, TypeVar, GetArg, GetArgs, Literal
+
+T = TypeVar('T')
+U = TypeVar('U')
+
+class MyGeneric(Generic[T, U]):
+    pass
+
+class MyGeneric2(MyGeneric[T, str]):
+    pass
+
+class Concrete(MyGeneric2[int]):
+    pass
+
+# Get first type arg
+x: GetArg[Concrete, MyGeneric, Literal[0]]
+reveal_type(x)  # N: Revealed type is "builtins.int"
+
+# Get second type arg
+y: GetArg[Concrete, MyGeneric, Literal[1]]
+reveal_type(y)  # N: Revealed type is "builtins.str"
+
+args: GetArgs[Concrete, MyGeneric]
+reveal_type(args)  # N: Revealed type is "tuple[builtins.int, builtins.str]"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
