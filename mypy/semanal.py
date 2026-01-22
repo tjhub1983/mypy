@@ -4043,8 +4043,7 @@ class SemanticAnalyzer(
             tvar_defs = self.tvar_defs_from_tvars(alias_type_vars, typ)
 
             if python_3_12_type_alias:
-                with self.allow_unbound_tvars_set():
-                    rvalue.accept(self)
+                self.analyze_type_expr(rvalue)
 
             analyzed, depends_on = analyze_type_alias(
                 typ,
