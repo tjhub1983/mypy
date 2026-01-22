@@ -1449,3 +1449,14 @@ Alias1: TypeAlias = Union[C, int]
 class SomeClass:
     pass
 [builtins fixtures/tuple.pyi]
+
+[case testLooksLikeAlias]
+
+# Test that we correctly catch type errors that depend on an iterator
+# inside something that *seems* like it could be an alias.
+
+# This was written because a workaround attempted for a different
+# problem broke this at one point.
+
+x = [0]
+y = x[[i for i in [None]][0]]  # E: Invalid index type "None" for "list[int]"; expected type "int"

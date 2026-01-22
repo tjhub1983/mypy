@@ -1151,6 +1151,11 @@ class TypeAnalyser(SyntheticTypeVisitor[Type], TypeAnalyzerPluginInterface):
             iter_var = self.tvar_scope.bind_new(t.iter_name, var_exprs[0][1], self.fail_func, t)
             assert isinstance(iter_var, TypeVarType), type(iter_var)
 
+            # Add the comprehension variable to allowed_alias_tvars so it doesn't
+            # trigger "type parameter not declared" errors when defining_alias=True
+            old_allowed = self.allowed_alias_tvars
+            self.allowed_alias_tvars = old_allowed + [iter_var]
+
             analt = t.copy_modified(
                 element_expr=self.anal_type(t.element_expr),
                 iter_type=iter_type,
@@ -1158,6 +1163,7 @@ class TypeAnalyser(SyntheticTypeVisitor[Type], TypeAnalyzerPluginInterface):
                 iter_var=iter_var,
             )
 
+            self.allowed_alias_tvars = old_allowed
             sem.pop_type_args(targs)
 
         return analt

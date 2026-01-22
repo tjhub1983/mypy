@@ -520,6 +520,12 @@ class SemanticAnalyzer(
         # new uses of this, as this may cause leaking `UnboundType`s to type checking.
         self.allow_unbound_tvars = False
 
+        # Set when we are analyzing a type as an expression.
+        # We need to do that analysis mostly for mypyc.
+        # When doing this, we disable variable binding in `for`, which
+        # can now appear in expressions.
+        self.analyzing_type_expr = False
+
         # Used to pass information about current overload index to visit_func_def().
         self.current_overload_item: int | None = None
 
@@ -574,6 +580,15 @@ class SemanticAnalyzer(
             yield
         finally:
             self.allow_unbound_tvars = old
+
+    @contextmanager
+    def analyzing_type_expr_set(self) -> Iterator[None]:
+        old = self.analyzing_type_expr
+        self.analyzing_type_expr = True
+        try:
+            yield
+        finally:
+            self.analyzing_type_expr = old
 
     @contextmanager
     def inside_except_star_block_set(
@@ -1889,8 +1904,6 @@ class SemanticAnalyzer(
         tvs: list[tuple[str, TypeVarLikeExpr]] = []
         for p in type_args:
             tv = self.analyze_type_param(p, context)
-            if tv is None:
-                return None
             tvs.append((p.name, tv))
 
             if self.is_defined_type_param(p.name):
@@ -1912,9 +1925,7 @@ class SemanticAnalyzer(
                     return True
         return False
 
-    def analyze_type_param(
-        self, type_param: TypeParam, context: Context
-    ) -> TypeVarLikeExpr | None:
+    def analyze_type_param(self, type_param: TypeParam, context: Context) -> TypeVarLikeExpr:
         fullname = self.qualified_name(type_param.name)
         if type_param.upper_bound:
             upper_bound = self.anal_type(type_param.upper_bound, allow_placeholder=True)
@@ -4515,9 +4526,15 @@ class SemanticAnalyzer(
 
         if (not existing or isinstance(existing.node, PlaceholderNode)) and not outer:
             # Define new variable.
-            var = self.make_name_lvalue_var(
-                lvalue, kind, not explicit_type, has_explicit_value, is_index_var
-            )
+            var: SymbolNode
+            if self.analyzing_type_expr:
+                # When analyzing type expressions... the lvalues are type variable
+                param = TypeParam(lvalue.name, TYPE_VAR_KIND, None, [], None)
+                var = self.analyze_type_param(param, lvalue)
+            else:
+                var = self.make_name_lvalue_var(
+                    lvalue, kind, not explicit_type, has_explicit_value, is_index_var
+                )
             added = self.add_symbol(name, var, lvalue, escape_comprehensions=escape_comprehensions)
             # Only bind expression if we successfully added name to symbol table.
             if added:
@@ -7758,7 +7775,11 @@ class SemanticAnalyzer(
         # them semantically analyzed, however, if they need to treat it as an expression
         # and not a type. (Which is to say, mypyc needs to do this.) Do the analysis
         # in a fresh tvar scope in order to suppress any errors about using type variables.
-        with self.tvar_scope_frame(TypeVarLikeScope()), self.allow_unbound_tvars_set():
+        with (
+            self.tvar_scope_frame(TypeVarLikeScope()),
+            self.allow_unbound_tvars_set(),
+            self.analyzing_type_expr_set(),
+        ):
             expr.accept(self)
 
     def type_analyzer(

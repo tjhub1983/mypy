@@ -383,3 +383,45 @@ reveal_type(x)  # N: Revealed type is "tuple[Literal['A'], Literal['B'], Literal
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
+
+
+[case testTypeComprehensionAlias1]
+# flags: --python-version 3.14
+# Test type comprehension with element transformation
+from typing import Uppercase, Literal, Iter
+
+# Transform elements
+type A = tuple[*[Uppercase[T] for T in Iter[tuple[Literal["a"], Literal["b"], Literal["c"]]]]]
+x: A
+reveal_type(x)  # N: Revealed type is "tuple[Literal['A'], Literal['B'], Literal['C']]"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testTypeComprehensionAlias2]
+# flags: --python-version 3.14
+# Test type comprehension with element transformation
+from typing import Uppercase, Literal, Iter
+
+# Transform elements
+type Trans[U] = tuple[*[Uppercase[T] for T in Iter[U]]]
+x: Trans[tuple[Literal["a"], Literal["b"], Literal["c"]]]
+reveal_type(x)  # N: Revealed type is "tuple[Literal['A'], Literal['B'], Literal['C']]"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testTypeComprehensionAlias3]
+# flags: --python-version 3.14
+# Test type comprehension with element transformation
+from typing import Uppercase, Literal, Iter
+
+# XXX: DECISION: Should shadowing be allowed?
+
+# Transform elements
+type Trans[T] = tuple[*[Uppercase[T] for T in Iter[T]]]  # E: "T" already defined as a type parameter
+x: Trans[tuple[Literal["a"], Literal["b"], Literal["c"]]]
+reveal_type(x)  # N: Revealed type is "tuple[Literal['A'], Literal['B'], Literal['C']]"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]

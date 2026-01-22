@@ -301,11 +301,7 @@ def expr_to_unanalyzed_type(
             if not isinstance(item_name, StrExpr):
                 if item_name is None:
                     typ = expr_to_unanalyzed_type(
-                        value,
-                        options,
-                        allow_new_syntax,
-                        expr,
-                        lookup_qualified=lookup_qualified,
+                        value, options, allow_new_syntax, expr, lookup_qualified=lookup_qualified
                     )
                     # TypedDict spread values should be ProperTypes
                     assert isinstance(typ, ProperType)
