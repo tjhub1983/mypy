@@ -1598,9 +1598,11 @@ def make_call(*items: tuple[str, str | None]) -> CallExpr:
 
 
 class TestExpandTypeLimitGetProperType(TestCase):
+    # WARNING: This should probably stay 0 forever.
+    ALLOWED_GET_PROPER_TYPES = 0
     # WARNING: do not increase this number unless absolutely necessary,
     # and you understand what you are doing.
-    ALLOWED_GET_PROPER_TYPES = 7
+    ALLOWED_GET_SEMI_PROPER_TYPES = 7
 
     @skipUnless(mypy.expandtype.__file__.endswith(".py"), "Skip for compiled mypy")
     def test_count_get_proper_type(self) -> None:
@@ -1609,3 +1611,7 @@ class TestExpandTypeLimitGetProperType(TestCase):
         get_proper_type_count = len(re.findall(r"get_proper_type\(", code))
         get_proper_type_count -= len(re.findall(r"get_proper_type\(\)", code))
         assert get_proper_type_count == self.ALLOWED_GET_PROPER_TYPES
+
+        get_semi_proper_type_count = len(re.findall(r"get_semi_proper_type\(", code))
+        get_semi_proper_type_count -= len(re.findall(r"get_semi_proper_type\(\)", code))
+        assert get_semi_proper_type_count == self.ALLOWED_GET_SEMI_PROPER_TYPES

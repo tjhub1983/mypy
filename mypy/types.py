@@ -468,10 +468,25 @@ class TypeAliasType(Type):
         return alias
 
 
-class ComputedType(Type):
+class SemiProperType(Type):
+    """Not a type alias.
+
+    *Can* be a ComputedType!
+
+    Most places should keep using get_proper_type(), though, I believe.
+
+    Every type except TypeAliasType (and its subclasses)
+    must inherit from this type.
+    """
+
+    __slots__ = ()
+
+
+class ComputedType(SemiProperType):
     """Base class for types that represent unevaluated type-level computations.
 
-    NOT a ProperType - must be expanded/evaluated before use in most type
+    NOT a ProperType or even a SemiProperType
+    - must be expanded/evaluated before use in most type
     operations. Analogous to TypeAliasType in that it wraps a computation
     that produces a concrete type.
 
@@ -748,7 +763,7 @@ class ReadOnlyType(Type):
         return self.item.accept(visitor)
 
 
-class ProperType(Type):
+class ProperType(SemiProperType):
     """Not a type alias or computed type.
 
     Every type except TypeAliasType and ComputedType (and its subclasses)
@@ -3874,6 +3889,34 @@ class PlaceholderType(ProperType):
 
 
 @overload
+def get_semi_proper_type(typ: None) -> None: ...
+
+
+@overload
+def get_semi_proper_type(typ: Type) -> SemiProperType: ...
+
+
+def get_semi_proper_type(typ: Type | None) -> SemiProperType | None:
+    """Get the expansion of a type alias type.
+
+    If the type is already a proper type, this is a no-op. Use this function
+    wherever a decision is made on a call like e.g. 'if isinstance(typ, UnionType): ...',
+    because 'typ' in this case may be an alias to union. Note: if after making the decision
+    on the isinstance() call you pass on the original type (and not one of its components)
+    it is recommended to *always* pass on the unexpanded alias.
+    """
+    if typ is None:
+        return None
+    # TODO: this is an ugly hack, remove.
+    if isinstance(typ, TypeGuardedType):
+        typ = typ.type_guard
+    while isinstance(typ, TypeAliasType):
+        typ = typ._expand_once()
+    # TODO: store the name of original type alias on this type, so we can show it in errors.
+    return cast(SemiProperType, typ)
+
+
+@overload
 def get_proper_type(typ: None) -> None: ...
 
 
@@ -4489,7 +4532,8 @@ def flatten_nested_unions(
             if not handle_recursive and t.is_recursive:
                 tp: Type = t
             else:
-                tp = get_proper_type(t)
+                # N.B: Not get_proper_type(), because this is called from expand_type
+                tp = get_semi_proper_type(t)
         else:
             tp = t
         if isinstance(tp, ProperType) and isinstance(tp, UnionType):

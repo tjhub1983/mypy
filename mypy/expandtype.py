@@ -38,7 +38,7 @@ from mypy.types import (
     UnionType,
     UnpackType,
     flatten_nested_unions,
-    get_proper_type,
+    get_semi_proper_type,
     split_with_prefix_and_suffix,
 )
 from mypy.typevartuples import split_with_instance
@@ -50,8 +50,8 @@ import mypy.type_visitor  # ruff: isort: skip
 # is_subtype(), meet_types(), join_types() etc.
 # TODO: add a static dependency test for this.
 
-# XXX: The changes to get_proper_type to do type-level computation
-# breaks this invariant! I think we need another layer of indirection!
+# WARNING: WARNING: This *also* means that get_proper_type can't be used here!
+# Since type evaluation can probably depend on all that stuff.
 
 
 @overload
@@ -230,9 +230,9 @@ class ExpandTypeVisitor(TrivialSyntheticTypeTranslator):
             # Normalize Tuple[*Tuple[X, ...], ...] -> Tuple[X, ...]
             arg = args[0]
             if isinstance(arg, UnpackType):
-                unpacked = get_proper_type(arg.type)
+                unpacked = get_semi_proper_type(arg.type)
                 if isinstance(unpacked, Instance):
-                    # TODO: this and similar asserts below may be unsafe because get_proper_type()
+                    # TODO: this and similar asserts below may be unsafe because get_semi_proper_type()
                     # may be called during semantic analysis before all invalid types are removed.
                     assert unpacked.type.fullname == "builtins.tuple"
                     args = list(unpacked.args)
@@ -397,9 +397,9 @@ class ExpandTypeVisitor(TrivialSyntheticTypeTranslator):
             assert isinstance(t.type, ProperType) and isinstance(t.type, TupleType)
             t2 = t.type
             fallback = t2.partial_fallback
-        repl = get_proper_type(t2)
+        repl = get_semi_proper_type(t2)
         if isinstance(repl, UnpackType):
-            repl = get_proper_type(repl.type)
+            repl = get_semi_proper_type(repl.type)
         if isinstance(repl, TupleType):
             return repl.items
         elif (
@@ -423,7 +423,7 @@ class ExpandTypeVisitor(TrivialSyntheticTypeTranslator):
         prefix = self.expand_types(t.arg_types[:star_index])
         suffix = self.expand_types(t.arg_types[star_index + 1 :])
 
-        var_arg_type = get_proper_type(var_arg.type)
+        var_arg_type = get_semi_proper_type(var_arg.type)
         new_unpack: Type
         if isinstance(var_arg_type, TupleType):
             # We have something like Unpack[Tuple[Unpack[Ts], X1, X2]]
@@ -437,7 +437,7 @@ class ExpandTypeVisitor(TrivialSyntheticTypeTranslator):
             fallback = var_arg_type.tuple_fallback
             expanded_items = self.expand_unpack(var_arg)
             new_unpack = UnpackType(TupleType(expanded_items, fallback))
-        # Since get_proper_type() may be called in semanal.py before callable
+        # Since get_semi_proper_type() may be called in semanal.py before callable
         # normalization happens, we need to also handle non-normal cases here.
         elif isinstance(var_arg_type, Instance):
             # we have something like Unpack[Tuple[Any, ...]]
@@ -554,7 +554,7 @@ class ExpandTypeVisitor(TrivialSyntheticTypeTranslator):
             # Normalize Tuple[*Tuple[X, ...]] -> Tuple[X, ...]
             item = items[0]
             if isinstance(item, UnpackType):
-                unpacked = get_proper_type(item.type)
+                unpacked = get_semi_proper_type(item.type)
                 if isinstance(unpacked, Instance):
                     # expand_type() may be called during semantic analysis, before invalid unpacks are fixed.
                     if unpacked.type.fullname != "builtins.tuple":
@@ -595,12 +595,12 @@ class ExpandTypeVisitor(TrivialSyntheticTypeTranslator):
         simplified = UnionType.make_union(
             remove_trivial(flatten_nested_unions(expanded)), t.line, t.column
         )
-        # This call to get_proper_type() is unfortunate but is required to preserve
+        # This call to get_semi_proper_type() is unfortunate but is required to preserve
         # the invariant that ProperType will stay ProperType after applying expand_type(),
         # otherwise a single item union of a type alias will break it. Note this should not
         # cause infinite recursion since pathological aliases like A = Union[A, B] are
         # banned at the semantic analysis level.
-        result = get_proper_type(simplified)
+        result = get_semi_proper_type(simplified)
 
         if use_cache:
             self.set_cached(t, result)
@@ -659,7 +659,7 @@ def remove_trivial(types: Iterable[Type]) -> list[Type]:
     new_types = []
     all_types = set()
     for t in types:
-        p_t = get_proper_type(t)
+        p_t = get_semi_proper_type(t)
         if isinstance(p_t, UninhabitedType):
             continue
         if isinstance(p_t, NoneType) and not state.strict_optional:
