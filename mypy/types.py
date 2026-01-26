@@ -3935,18 +3935,20 @@ def get_proper_type(typ: Type | None) -> ProperType | None:
             typ = typ._expand_once()
         elif isinstance(typ, ComputedType):
             # Handles TypeOperatorType, TypeForComprehension
-            typ = typ.expand()
+            if not is_stuck_expansion(ntyp := typ.expand()):
+                typ = ntyp
+            else:
+                break
         elif (
             isinstance(typ, ProperType)
             and isinstance(typ, TupleType)
             and any(isinstance(st, ComputedType) for st in typ.items)
             and not trouble
         ):
-            # XXX: need to get rid of full get_proper_type calls in expandtype
-            # and cover Instance, Callable
+            # XXX: need to cover Instance, Callable
             # also I'm really not sure about this at all!
             # this is a lot of work to be doing in get_proper_type
-            typ2 = typ.copy_modified(items=[try_expand(st) for st in typ.items])
+            typ2 = typ.copy_modified(items=[get_proper_type(st) for st in typ.items])
             typ = expand_type(typ2, {})
             trouble = True
 
@@ -3992,18 +3994,10 @@ def is_stuck_expansion(typ: Type) -> bool:
 def try_expand_or_none(type: Type) -> ProperType | None:
     """Try to expand a type, but return None if it gets stuck"""
     type2 = get_proper_type(type)
-    if is_stuck_expansion(type2):
+    if type is type2 and isinstance(type, ComputedType):
         return None
     else:
         return type2
-
-
-def try_expand(type: Type) -> Type:
-    """Try to expand a type, but return the original type if it gets stuck"""
-    if type2 := try_expand_or_none(type):
-        return type2
-    else:
-        return type
 
 
 # We split off the type visitor base classes to another module

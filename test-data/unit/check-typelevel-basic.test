@@ -159,6 +159,8 @@ x1: Callable[[Literal[True], int], None] = process  # E: Incompatible types in a
 x2: Callable[[Literal[False], str], None] = process  # E: Incompatible types in assignment (expression has type "Callable[[typing.IsSub[T, str], T], None]", variable has type "Callable[[Literal[False], str], None]")
 x3: Callable[[Literal[True], str], None] = process
 
+reveal_type(process)  # N: Revealed type is "def [T] (x: typing.IsSub[T`-1, builtins.str], y: T`-1)"
+
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
 

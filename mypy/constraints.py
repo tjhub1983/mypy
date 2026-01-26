@@ -1431,14 +1431,20 @@ class ConstraintBuilderVisitor(TypeVisitor[list[Constraint]]):
         assert False, f"This should be never called, got {template}"
 
     def visit_type_operator_type(self, template: TypeOperatorType) -> list[Constraint]:
-        assert (
-            False
-        ), f"Computed types should be expanded before constraint inference, got {template}"
+        # TODO: Is this right?
+        #
+        # We don't really know how to resolve constraints here, so
+        # resolve none, and hope that when variables are substituted,
+        # we figure out if things are ok.
+        return []
 
     def visit_type_for_comprehension(self, template: TypeForComprehension) -> list[Constraint]:
-        assert (
-            False
-        ), f"Computed types should be expanded before constraint inference, got {template}"
+        # TODO: Is this right?
+        #
+        # We don't really know how to resolve constraints here, so
+        # resolve none, and hope that when variables are substituted,
+        # we figure out if things are ok.
+        return []
 
     def infer_against_any(self, types: Iterable[Type], any_type: AnyType) -> list[Constraint]:
         res: list[Constraint] = []
