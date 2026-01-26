@@ -1163,10 +1163,31 @@ class SubtypeVisitor(TypeVisitor[bool]):
         assert False, f"This should be never called, got {left}"
 
     def visit_type_operator_type(self, left: TypeOperatorType) -> bool:
-        assert False, f"Computed types should be expanded before subtype check, got {left}"
+        # PERF: Using is_same_type can mean exponential time checking...
+        if isinstance(self.right, TypeOperatorType):
+            if left.fullname == self.right.fullname and len(left.args) == len(self.right.args):
+                return all(is_same_type(la, ra) for la, ra in zip(left.args, self.right.args))
+        return False
 
     def visit_type_for_comprehension(self, left: TypeForComprehension) -> bool:
-        assert False, f"Computed types should be expanded before subtype check, got {left}"
+        # PERF: Using is_same_type can mean exponential time checking...
+        if isinstance(self.right, TypeForComprehension):
+            if len(left.conditions) != len(self.right.conditions):
+                return False
+            if not is_same_type(left.iter_type, self.right.iter_type):
+                return False
+
+            # Substitute left.iter_var for right.iter_var in right's expressions
+            assert self.right.iter_var is not None and left.iter_var is not None
+            env = {self.right.iter_var.id: left.iter_var}
+            right_element_expr = expand_type(self.right.element_expr, env)
+            right_conditions = [expand_type(c, env) for c in self.right.conditions]
+
+            if is_same_type(left.element_expr, right_element_expr) and all(
+                is_same_type(lc, rc) for lc, rc in zip(left.conditions, right_conditions)
+            ):
+                return True
+        return False
 
 
 T = TypeVar("T", bound=Type)

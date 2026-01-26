@@ -427,3 +427,114 @@ reveal_type(x)  # N: Revealed type is "tuple[Literal['A'], Literal['B'], Literal
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
+
+[case testTypeOperatorSubType0]
+# flags: --python-version 3.14
+
+from typing import IsSub
+
+def process[T](x: IsSub[T, str], y: IsSub[T, int]) -> None:
+    x = y  # E: Incompatible types in assignment (expression has type "typing.IsSub[T, int]", variable has type "typing.IsSub[T, str]")
+
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testTypeOperatorSubType1]
+# flags: --python-version 3.14
+
+from typing import Callable, IsSub, Literal
+
+class A:
+    def process[T](self, x: IsSub[T, str], y: T) -> None:
+        ...
+
+
+class B(A):
+    pass
+
+
+class C(A):
+    def process[T](self, x: IsSub[T, str], y: T) -> None:
+        ...
+
+class D(A):
+    def process[T](self, x: IsSub[T, int], y: T) -> None:  # E: Argument 1 of "process" is incompatible with supertype "A"; supertype defines the argument type as "typing.IsSub[T, str]" \
+                                                           # N: This violates the Liskov substitution principle \
+                                                           # N: See https://mypy.readthedocs.io/en/stable/common_issues.html#incompatible-overrides
+        ...
+
+
+class E(A):
+    def process[T](self, x: str, y: T) -> None:  # E: Argument 1 of "process" is incompatible with supertype "A"; supertype defines the argument type as "typing.IsSub[T, str]" \
+                                                 # N: This violates the Liskov substitution principle \
+                                                 # N: See https://mypy.readthedocs.io/en/stable/common_issues.html#incompatible-overrides
+        ...
+
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testTypeOperatorSubType2]
+# flags: --python-version 3.14
+
+from typing import Callable, IsSub, Literal
+
+class A:
+    def process[T](self, y: T) -> IsSub[T, str]:
+        ...
+
+
+class B(A):
+    pass
+
+
+class C(A):
+    def process[T](self, y: T) -> IsSub[T, str]:
+        ...
+
+
+class D(A):
+    def process[T](self, y: T) -> IsSub[T, int]:  # E: Return type "typing.IsSub[T, int]" of "process" incompatible with return type "typing.IsSub[T, str]" in supertype "A"
+        ...
+
+
+class E(A):
+    def process[T](self, y: T) -> str:  # E: Return type "str" of "process" incompatible with return type "typing.IsSub[T, str]" in supertype "A"
+        ...
+
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+
+[case testTypeOperatorSubType3]
+# flags: --python-version 3.14
+
+from typing import Callable, IsSub, Literal, Iter
+
+class A:
+    def process[Ts](self, x: Ts) -> tuple[*[t for t in Iter[Ts]]]:
+        ...
+
+
+class B(A):
+    pass
+
+
+# alpha varying
+class C(A):
+    def process[Us](self, x: Us) -> tuple[*[s for s in Iter[Us]]]:
+        ...
+
+
+class D(A):
+    def process[Ts](self, x: Ts) -> tuple[*[int for s in Iter[Ts]]]:  # E: Signature of "process" incompatible with supertype "A" \
+                                                                      # N:      Superclass: \
+                                                                      # N:          def [Ts] process(self, x: Ts) -> tuple[*[t for t in typing.Iter[Ts]]] \
+                                                                      # N:      Subclass: \
+                                                                      # N:          def [Ts] process(self, x: Ts) -> tuple[*[int for s in typing.Iter[Ts]]]
+        ...
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]

@@ -89,6 +89,7 @@ from mypy.types import (
     Type,
     TypeAliasType,
     TypedDictType,
+    TypeForComprehension,
     TypeOfAny,
     TypeOperatorType,
     TypeStrVisitor,
@@ -2616,6 +2617,10 @@ def format_type_inner(
         # There are type arguments. Convert the arguments to strings.
         base_str = typ.type.fullname if typ.type else "<unfixed>"
         return f"{base_str}[{format_list(typ.args)}]"
+
+    if isinstance(typ, TypeForComprehension):
+        conditions_str = "".join(f" if {format(c)}" for c in typ.conditions)
+        return f"*[{format(typ.element_expr)} for {typ.iter_name} in {format(typ.iter_type)}{conditions_str}]"
 
     if isinstance(typ, Instance):
         itype = typ
