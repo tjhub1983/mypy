@@ -41,7 +41,7 @@ reveal_type(m)  # N: Revealed type is "tuple[typing.Member[Literal['PI'], builti
 [typing fixtures/typing-full.pyi]
 
 [case testTypeOperatorAttrsBasic]
-# Test Attrs operator - filters to instance attributes only
+# Test Attrs operator - filters to attributes only (excludes methods)
 from typing import Attrs, Member, ClassVar, Literal
 
 class MyClass:
@@ -50,8 +50,8 @@ class MyClass:
     def method(self) -> None: pass
 
 a: Attrs[MyClass]
-# Should only include 'name', excluding ClassVar and methods
-reveal_type(a)  # N: Revealed type is "tuple[typing.Member[Literal['name'], builtins.str, Never, Never, __main__.MyClass]]"
+# Should include 'name' and 'count', but exclude methods
+reveal_type(a)  # N: Revealed type is "tuple[typing.Member[Literal['name'], builtins.str, Never, Never, __main__.MyClass], typing.Member[Literal['count'], builtins.int, Literal['ClassVar'], Never, __main__.MyClass]]"
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]

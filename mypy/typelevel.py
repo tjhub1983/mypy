@@ -514,9 +514,9 @@ def _eval_members(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
 @register_operator("typing.Attrs")
 @lift_over_unions
 def _eval_attrs(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
-    """Evaluate Attrs[T] -> tuple of Member types for annotated instance attributes only.
+    """Evaluate Attrs[T] -> tuple of Member types for annotated attributes only.
 
-    Excludes methods and ClassVar members.
+    Excludes methods but includes ClassVar members.
     """
     return _eval_members_impl(evaluator, typ, attrs_only=True)
 
@@ -527,10 +527,9 @@ def _eval_members_impl(
     """Common implementation for Members and Attrs operators.
 
     Args:
-        attrs_only: If True, filter to instance attributes only (excludes methods
-                    and ClassVar members). If False, include all members.
+        attrs_only: If True, filter to attributes only (excludes methods).
+                    If False, include all members.
     """
-    from mypy.nodes import Var
     from mypy.types import CallableType
 
     if len(typ.args) != 1:
@@ -556,12 +555,7 @@ def _eval_members_impl(
             continue
 
         if attrs_only:
-            # Attrs filters to instance attributes only:
-            # - Skip ClassVar members
-            # - Skip methods (CallableType that are not property types)
-            node = sym.node
-            if isinstance(node, Var) and node.is_classvar:
-                continue
+            # Attrs filters to attributes only (excludes methods)
             if isinstance(get_proper_type(sym.type), CallableType):
                 continue
 
