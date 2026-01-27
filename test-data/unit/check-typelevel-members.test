@@ -130,3 +130,33 @@ reveal_type(b)  # N: Revealed type is "tuple[typing.Member[Literal['x'], builtin
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
+
+
+[case testTypeOperatorMembersDefiner]
+from typing import Attrs, Members
+
+class Base:
+    x: int
+
+
+class Child(Base):
+    y: str
+
+
+class Child2(Base):
+    x: bool
+    y: str
+
+
+a: Members[Child]
+reveal_type(a)  # N: Revealed type is "tuple[typing.Member[Literal['x'], builtins.int, Never, Never, __main__.Base], typing.Member[Literal['y'], builtins.str, Never, Never, __main__.Child]]"
+
+b: Attrs[Child]
+reveal_type(b)  # N: Revealed type is "tuple[typing.Member[Literal['x'], builtins.int, Never, Never, __main__.Base], typing.Member[Literal['y'], builtins.str, Never, Never, __main__.Child]]"
+
+c: Attrs[Child2]
+reveal_type(c)  # N: Revealed type is "tuple[typing.Member[Literal['x'], builtins.bool, Never, Never, __main__.Child2], typing.Member[Literal['y'], builtins.str, Never, Never, __main__.Child2]]"
+
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]

@@ -545,39 +545,49 @@ def _eval_members_impl(
     if member_info is None:
         return UninhabitedType()
 
-    members: list[Type] = []
-    for name, sym in target.type.names.items():
-        # Skip private/dunder names
-        if name.startswith("_"):
+    members: dict[str, Type] = {}
+
+    # Iterate through MRO in reverse (base classes first) to include inherited members
+    for type_info in reversed(target.type.mro):
+        # Skip builtins.object to avoid noise
+        if type_info.fullname == "builtins.object":
             continue
 
-        if sym.type is None:
-            continue
-
-        # Skip inferred attributes (those without explicit type annotations)
-        if isinstance(sym.node, Var) and sym.node.is_inferred:
-            continue
-
-        if attrs_only:
-            # Attrs filters to attributes only (excludes methods).
-            # Methods are FuncDef nodes; Callable-typed attributes are Var nodes.
-            if isinstance(sym.node, FuncDef):
+        for name, sym in type_info.names.items():
+            # Skip private/dunder names
+            if name.startswith("_"):
                 continue
 
-        # Expand the member type to substitute type variables with actual args
-        member_typ = expand_type_by_instance(sym.type, target)
+            if sym.type is None:
+                continue
 
-        member_type = create_member_type(
-            evaluator,
-            member_info.type,
-            name=name,
-            typ=member_typ,
-            node=sym.node,
-            definer=target,
-        )
-        members.append(member_type)
+            # Skip inferred attributes (those without explicit type annotations)
+            if isinstance(sym.node, Var) and sym.node.is_inferred:
+                continue
 
-    return evaluator.tuple_type(members)
+            if attrs_only:
+                # Attrs filters to attributes only (excludes methods).
+                # Methods are FuncDef nodes; Callable-typed attributes are Var nodes.
+                if isinstance(sym.node, FuncDef):
+                    continue
+
+            # Expand the member type to substitute type variables with actual args
+            member_typ = expand_type_by_instance(sym.type, target)
+
+            # Create definer instance for the class that defined this member
+            definer = Instance(type_info, target.args) if type_info.type_vars else Instance(type_info, [])
+
+            member_type = create_member_type(
+                evaluator,
+                member_info.type,
+                name=name,
+                typ=member_typ,
+                node=sym.node,
+                definer=definer,
+            )
+            members[name] = member_type
+
+    return evaluator.tuple_type(list(members.values()))
 
 
 def create_member_type(
