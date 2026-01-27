@@ -1,6 +1,6 @@
 [case testTypeOperatorMembersBasic]
 # Test Members operator - basic class
-from typing import Members, Member, Literal
+from typing import Members
 
 class Point:
     x: int
@@ -14,7 +14,7 @@ reveal_type(m)  # N: Revealed type is "tuple[typing.Member[Literal['x'], builtin
 
 [case testTypeOperatorMembersWithClassVar]
 # Test Members operator with ClassVar
-from typing import Members, Member, ClassVar, Literal
+from typing import Members, ClassVar
 
 class Config:
     name: str
@@ -28,7 +28,7 @@ reveal_type(m)  # N: Revealed type is "tuple[typing.Member[Literal['name'], buil
 
 [case testTypeOperatorMembersWithFinal]
 # Test Members operator with Final
-from typing import Members, Member, Final, Literal
+from typing import Members, Final
 
 class Constants:
     PI: Final[float] = 3.14
@@ -42,7 +42,7 @@ reveal_type(m)  # N: Revealed type is "tuple[typing.Member[Literal['PI'], builti
 
 [case testTypeOperatorAttrsBasic]
 # Test Attrs operator - filters to attributes only (excludes methods)
-from typing import Attrs, Member, ClassVar, Literal
+from typing import Attrs, ClassVar
 
 class MyClass:
     name: str
@@ -57,8 +57,8 @@ reveal_type(a)  # N: Revealed type is "tuple[typing.Member[Literal['name'], buil
 [typing fixtures/typing-full.pyi]
 
 [case testTypeOperatorAttrsCallable]
-# Test Attrs operator - filters to instance attributes only
-from typing import Attrs, Member, Callable, ClassVar, Literal
+# Test Attrs operator - includes Callable-typed attributes
+from typing import Attrs, Callable
 
 class MyClass:
     f: Callable[[int], int]
@@ -69,10 +69,9 @@ reveal_type(a)  # N: Revealed type is "tuple[typing.Member[Literal['f'], def (bu
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
 
-
 [case testTypeOperatorMembersEmpty]
 # Test Members operator with no public members
-from typing import Members, Literal
+from typing import Members
 
 class Empty:
     _private: int
@@ -85,7 +84,7 @@ reveal_type(m)  # N: Revealed type is "tuple[()]"
 
 [case testTypeOperatorMembersGenericClass]
 # Test Members operator with generic class
-from typing import Members, Member, Generic, TypeVar, Literal
+from typing import Members, Generic, TypeVar
 
 T = TypeVar('T')
 
@@ -100,14 +99,14 @@ reveal_type(m)  # N: Revealed type is "tuple[typing.Member[Literal['value'], bui
 [typing fixtures/typing-full.pyi]
 
 [case testTypeOperatorMembersMethod]
-from typing import Members, Member, ClassVar, Literal
+# Test Members operator includes methods with ClassVar qualifier
+from typing import Members
 
 class MyClass:
     def method(self) -> None: pass
 
 a: Members[MyClass]
 reveal_type(a)  # N: Revealed type is "tuple[typing.Member[Literal['method'], def (self: __main__.MyClass), Literal['ClassVar'], Never, __main__.MyClass]]"
-
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
