@@ -3915,6 +3915,35 @@ def get_proper_type_simple(typ: Type | None) -> ProperType | None:
     return cast(ProperType, typ)
 
 
+def _expand_type_fors_in_args(typ: ProperType) -> ProperType:
+    """
+    Expand any TypeForComprehensions in type arguments.
+    """
+    # TODO: lots of perf optimizations available
+    # XXX: Callable
+
+    # also I'm really not sure about this at all!
+    # this is a lot of work to be doing in get_proper_type
+    from mypy.expandtype import expand_type
+
+    typ2: ProperType
+
+    if isinstance(typ, TupleType) and any(
+        isinstance(st, TypeForComprehension) for st in typ.items
+    ):
+        typ2 = typ.copy_modified(items=[get_proper_type(st) for st in typ.items])
+        # expanding the types might produce Unpacks, which we use
+        # expand_type to substitute in.
+        typ = expand_type(typ2, {})
+    elif isinstance(typ, Instance) and any(
+        isinstance(st, TypeForComprehension) for st in typ.args
+    ):
+        typ2 = typ.copy_modified(args=[get_proper_type(st) for st in typ.args])
+        typ = expand_type(typ2, {})
+
+    return typ
+
+
 @overload
 def get_proper_type(typ: None) -> None: ...
 
@@ -3934,15 +3963,12 @@ def get_proper_type(typ: Type | None) -> ProperType | None:
 
     This also *attempts* to expand computed types, though it might fail.
     """
-    from mypy.expandtype import expand_type
-
     if typ is None:
         return None
     # TODO: this is an ugly hack, remove.
     if isinstance(typ, TypeGuardedType):
         typ = typ.type_guard
 
-    trouble = False
     while True:
         if isinstance(typ, TypeAliasType):
             typ = typ._expand_once()
@@ -3952,23 +3978,16 @@ def get_proper_type(typ: Type | None) -> ProperType | None:
                 typ = ntyp
             else:
                 break
-        elif (
-            isinstance(typ, ProperType)
-            and isinstance(typ, TupleType)
-            and any(isinstance(st, ComputedType) for st in typ.items)
-            and not trouble
-        ):
-            # XXX: need to cover Instance, Callable
-            # also I'm really not sure about this at all!
-            # this is a lot of work to be doing in get_proper_type
-            typ2 = typ.copy_modified(items=[get_proper_type(st) for st in typ.items])
-            typ = expand_type(typ2, {})
-            trouble = True
 
         else:
             break
+
+    typ = cast(ProperType, typ)
+
+    typ = _expand_type_fors_in_args(typ)
+
     # TODO: store the name of original type alias on this type, so we can show it in errors.
-    return cast(ProperType, typ)
+    return typ
 
 
 @overload
@@ -4084,6 +4103,10 @@ class TypeStrVisitor(SyntheticTypeVisitor[str]):
             return f"<Deleted '{t.source}'>"
 
     def visit_instance(self, t: Instance, /) -> str:
+        if self.expand:
+            if (nt := try_expand_or_none(t)) and nt != t:
+                return nt.accept(self)
+
         fullname = t.type.fullname
         if not self.options.reveal_verbose_types and fullname.startswith("builtins."):
             fullname = t.type.name
