@@ -16,7 +16,7 @@ _T = TypeVar("_T")
 def _type_operator(cls: type[_T]) -> type[_T]: ...
 
 # MemberQuals: qualifiers that can apply to a Member
-MemberQuals: typing_extensions.TypeAlias = Literal["ClassVar", "Final"]
+MemberQuals: typing_extensions.TypeAlias = Literal["ClassVar", "Final", "Required", "NotRequired", "ReadOnly"]
 
 # ParamQuals: qualifiers that can apply to a Param
 ParamQuals: typing_extensions.TypeAlias = Literal["positional", "keyword", "default", "*", "**"]

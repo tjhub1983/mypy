@@ -181,3 +181,16 @@ reveal_type(c)  # N: Revealed type is "tuple[typing.Member[Literal['x'], builtin
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
+
+[case testTypeOperatorMembersTypedDict]
+from typing import Members, TypedDict
+
+class Person(TypedDict):
+    name: str
+    age: int
+
+m: Members[Person]
+reveal_type(m)  # N: Revealed type is "tuple[typing.Member[Literal['name'], builtins.str, Literal['Required'], Never, __main__.Person], typing.Member[Literal['age'], builtins.int, Literal['Required'], Never, __main__.Person]]"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]

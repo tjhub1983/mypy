@@ -25,6 +25,7 @@ from mypy.types import (
     ProperType,
     TupleType,
     Type,
+    TypedDictType,
     TypeForComprehension,
     TypeOfAny,
     TypeOperatorType,
@@ -536,12 +537,16 @@ def _eval_members_impl(
 
     target = evaluator.eval_proper(typ.args[0])
 
-    if not isinstance(target, Instance):
-        return UninhabitedType()
-
     # Get the Member TypeInfo
     member_info = evaluator.api.named_type_or_none("typing.Member")
     if member_info is None:
+        return UninhabitedType()
+
+    # Handle TypedDict
+    if isinstance(target, TypedDictType):
+        return _eval_typeddict_members(evaluator, target, member_info.type)
+
+    if not isinstance(target, Instance):
         return UninhabitedType()
 
     members: dict[str, Type] = {}
@@ -591,6 +596,54 @@ def _eval_members_impl(
             members[name] = member_type
 
     return evaluator.tuple_type(list(members.values()))
+
+
+def _eval_typeddict_members(
+    evaluator: TypeLevelEvaluator,
+    target: TypedDictType,
+    member_type_info: TypeInfo,
+) -> Type:
+    """Evaluate Members/Attrs for a TypedDict type."""
+    members: list[Type] = []
+
+    for name, item_type in target.items.items():
+        # Skip private/dunder names
+        if name.startswith("_"):
+            continue
+
+        # Build qualifiers for TypedDict keys
+        quals: list[str] = []
+        if name in target.required_keys:
+            quals.append("Required")
+        else:
+            quals.append("NotRequired")
+        if name in target.readonly_keys:
+            quals.append("ReadOnly")
+
+        # Create qualifier type
+        if len(quals) == 1:
+            quals_type: Type = evaluator.literal_str(quals[0])
+        else:
+            quals_type = UnionType.make_union(
+                [evaluator.literal_str(q) for q in quals]
+            )
+
+        # For TypedDict, definer is the TypedDict's fallback instance
+        definer = target.fallback
+
+        member_type = Instance(
+            member_type_info,
+            [
+                evaluator.literal_str(name),  # name
+                item_type,  # typ
+                quals_type,  # quals
+                UninhabitedType(),  # init (not tracked for TypedDict)
+                definer,  # definer
+            ],
+        )
+        members.append(member_type)
+
+    return evaluator.tuple_type(members)
 
 
 def create_member_type(
