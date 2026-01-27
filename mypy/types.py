@@ -159,7 +159,7 @@ DEPRECATED_TYPE_NAMES: Final = ("warnings.deprecated", "typing_extensions.deprec
 DISJOINT_BASE_DECORATOR_NAMES: Final = ("typing.disjoint_base", "typing_extensions.disjoint_base")
 
 # Supported @_type_operator decorator names (for type-level computation)
-TYPE_OPERATOR_NAMES: Final = ("typing._type_operator",)
+TYPE_OPERATOR_NAMES: Final = ("typing._type_operator", "_typeshed.typemap._type_operator")
 
 # We use this constant in various places when checking `tuple` subtyping:
 TUPLE_LIKE_INSTANCE_NAMES: Final = (
@@ -535,6 +535,10 @@ class TypeOperatorType(ComputedType):
             return self.type.fullname
         assert self.type_ref is not None
         return self.type_ref
+
+    @property
+    def name(self) -> str:
+        return self.fullname.split(".")[-1]
 
     def expand(self) -> Type:
         """Evaluate this type operator to produce a concrete type."""

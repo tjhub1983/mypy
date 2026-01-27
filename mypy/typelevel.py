@@ -81,7 +81,7 @@ class TypeLevelContext:
 typelevel_ctx: Final = TypeLevelContext()
 
 
-# Registry mapping operator fullnames to their evaluation functions
+# Registry mapping operator names (not full!) to their evaluation functions
 _OPERATOR_EVALUATORS: dict[str, Callable[[TypeLevelEvaluator, TypeOperatorType], Type]] = {}
 
 
@@ -89,7 +89,7 @@ EXPANSION_ANY = AnyType(TypeOfAny.expansion_stuck)
 
 
 def register_operator(
-    fullname: str,
+    name: str,
 ) -> Callable[
     [Callable[[TypeLevelEvaluator, TypeOperatorType], Type]],
     Callable[[TypeLevelEvaluator, TypeOperatorType], Type],
@@ -99,7 +99,7 @@ def register_operator(
     def decorator(
         func: Callable[[TypeLevelEvaluator, TypeOperatorType], Type],
     ) -> Callable[[TypeLevelEvaluator, TypeOperatorType], Type]:
-        _OPERATOR_EVALUATORS[fullname] = func
+        _OPERATOR_EVALUATORS[name] = func
         return func
 
     return decorator
@@ -186,8 +186,7 @@ class TypeLevelEvaluator:
 
     def eval_operator(self, typ: TypeOperatorType) -> Type:
         """Evaluate a type operator by dispatching to registered handler."""
-        fullname = typ.fullname
-        evaluator = _OPERATOR_EVALUATORS.get(fullname)
+        evaluator = _OPERATOR_EVALUATORS.get(typ.name)
 
         if evaluator is None:
             # print("NO EVALUATOR", fullname)
@@ -220,7 +219,7 @@ class TypeLevelEvaluator:
 # --- Operator Implementations for Phase 3A ---
 
 
-@register_operator("builtins._Cond")
+@register_operator("_Cond")
 def _eval_cond(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     """Evaluate _Cond[condition, TrueType, FalseType]."""
 
@@ -240,7 +239,7 @@ def _eval_cond(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
         return EXPANSION_ANY
 
 
-@register_operator("typing.Iter")
+@register_operator("Iter")
 def _eval_iter(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     """Evaluate a type-level iterator (Iter[T])."""
     if len(typ.args) != 1:
@@ -256,7 +255,7 @@ def _eval_iter(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
         return UninhabitedType()
 
 
-@register_operator("typing.IsSub")
+@register_operator("IsSub")
 def _eval_issub(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     """Evaluate a type-level condition (IsSub[T, Base])."""
 
@@ -308,7 +307,7 @@ def extract_literal_string(typ: Type) -> str | None:
 # --- Phase 3B: Type Introspection Operators ---
 
 
-@register_operator("typing.GetArg")
+@register_operator("GetArg")
 @lift_over_unions
 def _eval_get_arg(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     """Evaluate GetArg[T, Base, Idx] - get type argument at index from T as Base."""
@@ -333,7 +332,7 @@ def _eval_get_arg(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     return UninhabitedType()
 
 
-@register_operator("typing.GetArgs")
+@register_operator("GetArgs")
 @lift_over_unions
 def _eval_get_args(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     """Evaluate GetArgs[T, Base] -> tuple of all type args from T as Base."""
@@ -352,7 +351,7 @@ def _eval_get_args(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type
     return UninhabitedType()
 
 
-@register_operator("typing.FromUnion")
+@register_operator("FromUnion")
 def _eval_from_union(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     """Evaluate FromUnion[T] -> tuple of union elements."""
     if len(typ.args) != 1:
@@ -367,7 +366,7 @@ def _eval_from_union(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Ty
         return evaluator.tuple_type([target])
 
 
-@register_operator("typing.GetAttr")
+@register_operator("GetAttr")
 @lift_over_unions
 def _eval_get_attr(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     """Evaluate GetAttr[T, Name] - get attribute type from T."""
@@ -393,7 +392,7 @@ def _eval_get_attr(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type
 # --- Phase 3B: String Operations ---
 
 
-@register_operator("typing.Slice")
+@register_operator("Slice")
 @lift_over_unions
 def _eval_slice(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     """Evaluate Slice[S, Start, End] - slice a literal string."""
@@ -427,7 +426,7 @@ def _eval_slice(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     return UninhabitedType()
 
 
-@register_operator("typing.Concat")
+@register_operator("Concat")
 @lift_over_unions
 def _eval_concat(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     """Evaluate Concat[S1, S2] - concatenate two literal strings."""
@@ -443,7 +442,7 @@ def _eval_concat(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     return UninhabitedType()
 
 
-@register_operator("typing.Uppercase")
+@register_operator("Uppercase")
 @lift_over_unions
 def _eval_uppercase(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     """Evaluate Uppercase[S] - convert literal string to uppercase."""
@@ -457,7 +456,7 @@ def _eval_uppercase(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Typ
     return UninhabitedType()
 
 
-@register_operator("typing.Lowercase")
+@register_operator("Lowercase")
 @lift_over_unions
 def _eval_lowercase(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     """Evaluate Lowercase[S] - convert literal string to lowercase."""
@@ -471,7 +470,7 @@ def _eval_lowercase(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Typ
     return UninhabitedType()
 
 
-@register_operator("typing.Capitalize")
+@register_operator("Capitalize")
 @lift_over_unions
 def _eval_capitalize(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     """Evaluate Capitalize[S] - capitalize first character of literal string."""
@@ -485,7 +484,7 @@ def _eval_capitalize(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Ty
     return UninhabitedType()
 
 
-@register_operator("typing.Uncapitalize")
+@register_operator("Uncapitalize")
 @lift_over_unions
 def _eval_uncapitalize(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     """Evaluate Uncapitalize[S] - lowercase first character of literal string."""
@@ -503,7 +502,7 @@ def _eval_uncapitalize(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> 
 # --- Phase 3B: Object Introspection Operators ---
 
 
-@register_operator("typing.Members")
+@register_operator("Members")
 @lift_over_unions
 def _eval_members(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     """Evaluate Members[T] -> tuple of Member types for all members of T.
@@ -513,7 +512,7 @@ def _eval_members(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     return _eval_members_impl(evaluator, typ, attrs_only=False)
 
 
-@register_operator("typing.Attrs")
+@register_operator("Attrs")
 @lift_over_unions
 def _eval_attrs(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     """Evaluate Attrs[T] -> tuple of Member types for annotated attributes only.
@@ -637,7 +636,7 @@ def create_member_type(
 # --- Phase 3B: Utility Operators ---
 
 
-@register_operator("typing.Length")
+@register_operator("Length")
 @lift_over_unions
 def _eval_length(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     """Evaluate Length[T] -> Literal[int] for tuple length."""
