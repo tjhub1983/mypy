@@ -510,18 +510,20 @@ class TypeOperatorType(ComputedType):
     Type operators are generic classes in typeshed marked with @_type_operator.
     """
 
-    __slots__ = ("type", "args", "type_ref")
+    __slots__ = ("type", "args", "type_ref", "fallback")
 
     def __init__(
         self,
         type: mypy.nodes.TypeInfo | None,  # The TypeInfo for the operator (e.g., typing.GetArg)
         args: list[Type],  # The type arguments
+        fallback: Instance,
         line: int = -1,
         column: int = -1,
     ) -> None:
         super().__init__(line, column)
         self.type = type
         self.args = args
+        self.fallback = fallback
         self.type_ref: str | None = None  # XXX?
 
     def accept(self, visitor: TypeVisitor[T]) -> T:
@@ -556,6 +558,7 @@ class TypeOperatorType(ComputedType):
             ".class": "TypeOperatorType",
             "type_ref": self.fullname,
             "args": [arg.serialize() for arg in self.args],
+            "fallback": self.fallback.serialize(),
         }
         return data
 
@@ -567,25 +570,34 @@ class TypeOperatorType(ComputedType):
             args_list = data["args"]
             assert isinstance(args_list, list)
             args = [deserialize_type(arg) for arg in args_list]
-        typ = TypeOperatorType(None, args)
+        fallback = Instance.deserialize(data["fallback"])
+        typ = TypeOperatorType(None, args, fallback)
         typ.type_ref = data["type_ref"]
         return typ
 
     def copy_modified(self, *, args: list[Type] | None = None) -> TypeOperatorType:
         return TypeOperatorType(
-            self.type, args if args is not None else self.args.copy(), self.line, self.column
+            self.type,
+            args if args is not None else self.args.copy(),
+            self.fallback,
+            self.line,
+            self.column,
         )
 
     def write(self, data: WriteBuffer) -> None:
         write_tag(data, TYPE_OPERATOR_TYPE)
         write_type_list(data, self.args)
         write_str(data, self.fullname)
+        self.fallback.write(data)
         write_tag(data, END_TAG)
 
     @classmethod
     def read(cls, data: ReadBuffer) -> TypeOperatorType:
-        typ = TypeOperatorType(None, read_type_list(data))
-        typ.type_ref = read_str(data)
+        args = read_type_list(data)
+        type_ref = read_str(data)
+        fallback = Instance.read(data)
+        typ = TypeOperatorType(None, args, fallback)
+        typ.type_ref = type_ref
         assert read_tag(data) == END_TAG
         return typ
 

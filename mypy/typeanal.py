@@ -1130,7 +1130,8 @@ class TypeAnalyser(SyntheticTypeVisitor[Type], TypeAnalyzerPluginInterface):
             allow_unpack=True,
         )
 
-        return TypeOperatorType(type_info, an_args, t.line, t.column)
+        fallback = self.named_type("builtins.object")
+        return TypeOperatorType(type_info, an_args, fallback, t.line, t.column)
 
     def visit_type_operator_type(self, t: TypeOperatorType) -> Type:
         return t.copy_modified(args=self.anal_array(t.args, allow_unpack=True))
