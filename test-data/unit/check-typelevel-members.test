@@ -98,6 +98,27 @@ reveal_type(m)  # N: Revealed type is "tuple[typing.Member[Literal['value'], bui
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
 
+[case testTypeOperatorMembersGenericClassSub]
+# Test Members operator with generic class
+from typing import Members, Generic, TypeVar
+
+T = TypeVar('T')
+
+class Container(Generic[T]):
+    value: T
+    label: str
+
+
+class Child(Container[int]):
+    pass
+
+
+m: Members[Child]
+reveal_type(m)  # N: Revealed type is "tuple[typing.Member[Literal['value'], builtins.int, Never, Never, __main__.Container[builtins.int]], typing.Member[Literal['label'], builtins.str, Never, Never, __main__.Container[builtins.int]]]"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
 [case testTypeOperatorMembersMethod]
 # Test Members operator includes methods with ClassVar qualifier
 from typing import Members

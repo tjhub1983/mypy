@@ -572,11 +572,14 @@ def _eval_members_impl(
                 if isinstance(sym.node, FuncDef):
                     continue
 
-            # Expand the member type to substitute type variables with actual args
-            member_typ = expand_type_by_instance(sym.type, target)
+            # Map type_info to get correct type args as seen from target
+            if type_info == target.type:
+                definer = target
+            else:
+                definer = map_instance_to_supertype(target, type_info)
 
-            # Create definer instance for the class that defined this member
-            definer = Instance(type_info, target.args) if type_info.type_vars else Instance(type_info, [])
+            # Expand the member type to substitute type variables with actual args
+            member_typ = expand_type_by_instance(sym.type, definer)
 
             member_type = create_member_type(
                 evaluator,
