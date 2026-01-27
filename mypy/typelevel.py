@@ -594,6 +594,9 @@ def create_member_type(
             quals = evaluator.literal_str("Final")
         else:
             quals = UninhabitedType()  # Never = no qualifiers
+    elif isinstance(node, FuncDef):
+        # Methods are class-level, so they have ClassVar qualifier
+        quals = evaluator.literal_str("ClassVar")
     else:
         quals = UninhabitedType()
 
