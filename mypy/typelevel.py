@@ -530,7 +530,7 @@ def _eval_members_impl(
         attrs_only: If True, filter to attributes only (excludes methods).
                     If False, include all members.
     """
-    from mypy.types import CallableType
+    from mypy.nodes import FuncDef
 
     if len(typ.args) != 1:
         return UninhabitedType()
@@ -555,8 +555,9 @@ def _eval_members_impl(
             continue
 
         if attrs_only:
-            # Attrs filters to attributes only (excludes methods)
-            if isinstance(get_proper_type(sym.type), CallableType):
+            # Attrs filters to attributes only (excludes methods).
+            # Methods are FuncDef nodes; Callable-typed attributes are Var nodes.
+            if isinstance(sym.node, FuncDef):
                 continue
 
         # Expand the member type to substitute type variables with actual args

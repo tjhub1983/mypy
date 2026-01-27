@@ -56,6 +56,20 @@ reveal_type(a)  # N: Revealed type is "tuple[typing.Member[Literal['name'], buil
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
 
+[case testTypeOperatorAttrsCallable]
+# Test Attrs operator - filters to instance attributes only
+from typing import Attrs, Member, Callable, ClassVar, Literal
+
+class MyClass:
+    f: Callable[[int], int]
+
+a: Attrs[MyClass]
+reveal_type(a)  # N: Revealed type is "tuple[typing.Member[Literal['f'], def (builtins.int) -> builtins.int, Never, Never, __main__.MyClass]]"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+
 [case testTypeOperatorMembersEmpty]
 # Test Members operator with no public members
 from typing import Members, Literal
