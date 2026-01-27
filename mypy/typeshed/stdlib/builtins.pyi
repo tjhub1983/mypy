@@ -30,6 +30,7 @@ from _typeshed import (
     SupportsRichComparisonT,
     SupportsWrite,
 )
+from _typeshed.typemap import _type_operator
 from collections.abc import Awaitable, Callable, Iterable, Iterator, MutableSet, Reversible, Set as AbstractSet, Sized
 from io import BufferedRandom, BufferedReader, BufferedWriter, FileIO, TextIOWrapper
 from os import PathLike
@@ -58,7 +59,6 @@ from typing import (  # noqa: Y022,UP035,RUF100
     final,
     overload,
     type_check_only,
-    _type_operator,
 )
 
 # we can't import `Literal` from typing or mypy crashes: see #11247
