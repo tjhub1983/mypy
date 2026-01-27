@@ -191,7 +191,7 @@ class Person(TypedDict):
     nickname: NotRequired[str]
 
 m: Members[Person]
-reveal_type(m)  # N: Revealed type is "tuple[typing.Member[Literal['name'], builtins.str, Literal['Required'], Never, __main__.Person], typing.Member[Literal['age'], builtins.int, Literal['Required'], Never, __main__.Person], typing.Member[Literal['nickname'], builtins.str, Literal['NotRequired'], Never, __main__.Person]]"
+reveal_type(m)  # N: Revealed type is "tuple[typing.Member[Literal['name'], builtins.str, Literal['Required'], Never, Never], typing.Member[Literal['age'], builtins.int, Literal['Required'], Never, Never], typing.Member[Literal['nickname'], builtins.str, Literal['NotRequired'], Never, Never]]"
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
@@ -204,13 +204,12 @@ class Config(TypedDict):
     version: ReadOnly[int]
 
 m: Members[Config]
-reveal_type(m)  # N: Revealed type is "tuple[typing.Member[Literal['name'], builtins.str, Literal['Required'], Never, __main__.Config], typing.Member[Literal['version'], builtins.int, Literal['Required'] | Literal['ReadOnly'], Never, __main__.Config]]"
+reveal_type(m)  # N: Revealed type is "tuple[typing.Member[Literal['name'], builtins.str, Literal['Required'], Never, Never], typing.Member[Literal['version'], builtins.int, Literal['Required'] | Literal['ReadOnly'], Never, Never]]"
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
 
 [case testTypeOperatorMembersTypedDictInheritance]
-# Note: TypedDict inheritance merges all keys into the child, so definer is always the child
 from typing import Members, TypedDict, NotRequired
 
 class Base(TypedDict):
@@ -221,7 +220,7 @@ class Extended(Base):
     email: NotRequired[str]
 
 m: Members[Extended]
-reveal_type(m)  # N: Revealed type is "tuple[typing.Member[Literal['id'], builtins.int, Literal['Required'], Never, __main__.Extended], typing.Member[Literal['name'], builtins.str, Literal['Required'], Never, __main__.Extended], typing.Member[Literal['email'], builtins.str, Literal['NotRequired'], Never, __main__.Extended]]"
+reveal_type(m)  # N: Revealed type is "tuple[typing.Member[Literal['id'], builtins.int, Literal['Required'], Never, Never], typing.Member[Literal['name'], builtins.str, Literal['Required'], Never, Never], typing.Member[Literal['email'], builtins.str, Literal['NotRequired'], Never, Never]]"
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
@@ -232,7 +231,7 @@ from typing import Members, TypedDict
 Person = TypedDict('Person', {'name': str, 'age': int})
 
 m: Members[Person]
-reveal_type(m)  # N: Revealed type is "tuple[typing.Member[Literal['name'], builtins.str, Literal['Required'], Never, __main__.Person], typing.Member[Literal['age'], builtins.int, Literal['Required'], Never, __main__.Person]]"
+reveal_type(m)  # N: Revealed type is "tuple[typing.Member[Literal['name'], builtins.str, Literal['Required'], Never, Never], typing.Member[Literal['age'], builtins.int, Literal['Required'], Never, Never]]"
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]

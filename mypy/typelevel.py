@@ -628,9 +628,6 @@ def _eval_typeddict_members(
                 [evaluator.literal_str(q) for q in quals]
             )
 
-        # For TypedDict, definer is the TypedDict's fallback instance
-        definer = target.fallback
-
         member_type = Instance(
             member_type_info,
             [
@@ -638,7 +635,7 @@ def _eval_typeddict_members(
                 item_type,  # typ
                 quals_type,  # quals
                 UninhabitedType(),  # init (not tracked for TypedDict)
-                definer,  # definer
+                UninhabitedType(),  # definer (not tracked for TypedDict)
             ],
         )
         members.append(member_type)
