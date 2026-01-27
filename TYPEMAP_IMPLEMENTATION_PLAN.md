@@ -1,6 +1,7 @@
 # Implementation Plan: Type-Level Computation for Mypy
 
-This document outlines a plan for implementing the type-level computation proposal described in `../typemap/pre-pep.rst` and `../typemap/spec-draft.rst`.
+This document outlines a plan for implementing the type-level
+computation proposal described in `../typemap/pre-pep.rst`.
 
 ## Overview
 
@@ -1250,36 +1251,6 @@ def evaluate_comprehension(typ: TypeForComprehension) -> Type:
 ---
 
 ## Phase 4: Integration Points
-
-
-### 4.2 Integrate with `expand_type()` (`mypy/expandtype.py`)
-
-I THINK THIS IS NOT NEEDED
-
-Extend `ExpandTypeVisitor` to handle new types:
-
-```python
-class ExpandTypeVisitor(TypeTransformVisitor):
-    # ... existing methods ...
-
-    def visit_type_operator_type(self, t: TypeOperatorType) -> Type:
-        # Expand type args, including _Cond which has condition, true_type, false_type as args
-        return t.copy_modified(args=[arg.accept(self) for arg in t.args])
-
-    def visit_type_for_comprehension(self, t: TypeForComprehension) -> Type:
-        # Don't substitute the iteration variable
-        return TypeForComprehension(
-            t.element_expr.accept(self),
-            t.iter_var,
-            t.iter_type.accept(self),
-            [c.accept(self) for c in t.conditions],
-        )
-
-    # ... more visit methods for other new types ...
-```
-
-Note: Conditional types are now `_Cond[...]` TypeOperatorType, so they are handled by
-`visit_type_operator_type` along with all other type operators.
 
 
 ### 4.4 Type Inference with `**kwargs` TypeVar
