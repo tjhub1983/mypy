@@ -37,6 +37,8 @@ from mypy.types import (
     is_stuck_expansion,
 )
 
+from mypy.nodes import FuncDef, Var
+
 if TYPE_CHECKING:
     from mypy.nodes import TypeInfo
     from mypy.semanal_shared import SemanticAnalyzerInterface
@@ -530,8 +532,6 @@ def _eval_members_impl(
         attrs_only: If True, filter to attributes only (excludes methods).
                     If False, include all members.
     """
-    from mypy.nodes import FuncDef
-
     if len(typ.args) != 1:
         return UninhabitedType()
 
@@ -585,8 +585,6 @@ def create_member_type(
     definer: Instance,
 ) -> Instance:
     """Create a Member[name, typ, quals, init, definer] instance type."""
-    from mypy.nodes import Var
-
     # Determine qualifiers
     quals: Type
     if isinstance(node, Var):
