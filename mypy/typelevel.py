@@ -14,7 +14,7 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Final
 
-from mypy.expandtype import expand_type
+from mypy.expandtype import expand_type, expand_type_by_instance
 from mypy.maptype import map_instance_to_supertype
 from mypy.subtypes import is_subtype
 from mypy.types import (
@@ -496,6 +496,128 @@ def _eval_uncapitalize(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> 
         return evaluator.literal_str(result)
 
     return UninhabitedType()
+
+
+# --- Phase 3B: Object Introspection Operators ---
+
+
+@register_operator("typing.Members")
+@lift_over_unions
+def _eval_members(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """Evaluate Members[T] -> tuple of Member types for all members of T.
+
+    Includes methods, class variables, and instance attributes.
+    """
+    return _eval_members_impl(evaluator, typ, attrs_only=False)
+
+
+@register_operator("typing.Attrs")
+@lift_over_unions
+def _eval_attrs(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """Evaluate Attrs[T] -> tuple of Member types for annotated instance attributes only.
+
+    Excludes methods and ClassVar members.
+    """
+    return _eval_members_impl(evaluator, typ, attrs_only=True)
+
+
+def _eval_members_impl(
+    evaluator: TypeLevelEvaluator, typ: TypeOperatorType, *, attrs_only: bool
+) -> Type:
+    """Common implementation for Members and Attrs operators.
+
+    Args:
+        attrs_only: If True, filter to instance attributes only (excludes methods
+                    and ClassVar members). If False, include all members.
+    """
+    from mypy.nodes import Var
+    from mypy.types import CallableType
+
+    if len(typ.args) != 1:
+        return UninhabitedType()
+
+    target = evaluator.eval_proper(typ.args[0])
+
+    if not isinstance(target, Instance):
+        return UninhabitedType()
+
+    # Get the Member TypeInfo
+    member_info = evaluator.api.named_type_or_none("typing.Member")
+    if member_info is None:
+        return UninhabitedType()
+
+    members: list[Type] = []
+    for name, sym in target.type.names.items():
+        # Skip private/dunder names
+        if name.startswith("_"):
+            continue
+
+        if sym.type is None:
+            continue
+
+        if attrs_only:
+            # Attrs filters to instance attributes only:
+            # - Skip ClassVar members
+            # - Skip methods (CallableType that are not property types)
+            node = sym.node
+            if isinstance(node, Var) and node.is_classvar:
+                continue
+            if isinstance(get_proper_type(sym.type), CallableType):
+                continue
+
+        # Expand the member type to substitute type variables with actual args
+        member_typ = expand_type_by_instance(sym.type, target)
+
+        member_type = create_member_type(
+            evaluator,
+            member_info.type,
+            name=name,
+            typ=member_typ,
+            node=sym.node,
+            definer=target,
+        )
+        members.append(member_type)
+
+    return evaluator.tuple_type(members)
+
+
+def create_member_type(
+    evaluator: TypeLevelEvaluator,
+    member_type_info: TypeInfo,
+    name: str,
+    typ: Type,
+    node: object,
+    definer: Instance,
+) -> Instance:
+    """Create a Member[name, typ, quals, init, definer] instance type."""
+    from mypy.nodes import Var
+
+    # Determine qualifiers
+    quals: Type
+    if isinstance(node, Var):
+        if node.is_classvar:
+            quals = evaluator.literal_str("ClassVar")
+        elif node.is_final:
+            quals = evaluator.literal_str("Final")
+        else:
+            quals = UninhabitedType()  # Never = no qualifiers
+    else:
+        quals = UninhabitedType()
+
+    # For init, we currently don't track initializer literal types
+    # This would require changes to semantic analysis
+    init: Type = UninhabitedType()
+
+    return Instance(
+        member_type_info,
+        [
+            evaluator.literal_str(name),  # name
+            typ,  # typ
+            quals,  # quals
+            init,  # init
+            definer,  # definer
+        ],
+    )
 
 
 # --- Phase 3B: Utility Operators ---

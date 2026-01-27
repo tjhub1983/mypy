@@ -275,3 +275,26 @@ class Uncapitalize(Generic[T]): ...
 
 @_type_operator
 class Length(Generic[T]): ...
+
+@_type_operator
+class Members(Generic[T]): ...
+
+@_type_operator
+class Attrs(Generic[T]): ...
+
+# Member data type for type-level computation
+_Name = TypeVar('_Name')
+_Type = TypeVar('_Type')
+_Quals = TypeVar('_Quals')
+_Init = TypeVar('_Init')
+_Definer = TypeVar('_Definer')
+
+class Member(Generic[_Name, _Type, _Quals, _Init, _Definer]):
+    """
+    Represents a class member with name, type, qualifiers, initializer, and definer.
+    """
+    name: _Name
+    typ: _Type
+    quals: _Quals
+    init: _Init
+    definer: _Definer
