@@ -1140,6 +1140,8 @@ class TypeMeetVisitor(TypeVisitor[ProperType]):
     def visit_type_operator_type(self, t: TypeOperatorType) -> ProperType:
         # TODO: This seems very unsatisfactory. Can we do better ever?
         # (Do we need to do some self check also??)
+        #
+        # If we had intersections, we could use those...
         return self.default(t)
 
     def visit_type_for_comprehension(self, t: TypeForComprehension) -> ProperType:

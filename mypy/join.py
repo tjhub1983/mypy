@@ -670,6 +670,7 @@ class TypeJoinVisitor(TypeVisitor[ProperType]):
     def visit_type_operator_type(self, t: TypeOperatorType) -> ProperType:
         # TODO: This seems very unsatisfactory. Can we do better ever?
         # (Do we need to do some self check also??)
+        # We could do union, maybe?
         if isinstance(self.s, TypeOperatorType):
             return join_types(self.s.fallback, t.fallback)
         else:

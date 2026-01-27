@@ -550,10 +550,9 @@ def f0[T](x: IsSub[T, str], y: IsSub[T, str]) -> None:
     z = [x, y]
     reveal_type(z)  # N: Revealed type is "builtins.list[typing.IsSub[T`-1, builtins.str]]"
 
-# # XXX: has another error
-# def f1[T](x: IsSub[T, str], y: IsSub[T, str] | None) -> None:
-#     z = [x, y]
-#     reveal_type(z)
+def f1[T](x: IsSub[T, str], y: IsSub[T, str] | None) -> None:
+    z = [x, y]
+    reveal_type(z)  # N: Revealed type is "builtins.list[typing.IsSub[T`-1, builtins.str] | None]"
 
 def g[T](x: IsSub[T, str], y: IsSub[T, int]) -> None:
     z = [x, y]

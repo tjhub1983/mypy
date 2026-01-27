@@ -1166,11 +1166,13 @@ class SubtypeVisitor(TypeVisitor[bool]):
         # PERF: Using is_same_type can mean exponential time checking...
         if isinstance(self.right, TypeOperatorType):
             if left.fullname == self.right.fullname and len(left.args) == len(self.right.args):
-                return all(is_same_type(la, ra) for la, ra in zip(left.args, self.right.args))
-        return False
+                if all(is_same_type(la, ra) for la, ra in zip(left.args, self.right.args)):
+                    return True
+        return self._is_subtype(left.fallback, self.right)
 
     def visit_type_for_comprehension(self, left: TypeForComprehension) -> bool:
         # PERF: Using is_same_type can mean exponential time checking...
+        # TODO: should we match some Unpacks?
         if isinstance(self.right, TypeForComprehension):
             if len(left.conditions) != len(self.right.conditions):
                 return False
