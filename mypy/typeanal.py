@@ -1130,6 +1130,7 @@ class TypeAnalyser(SyntheticTypeVisitor[Type], TypeAnalyzerPluginInterface):
             allow_unpack=True,
         )
 
+        # TODO: different fallbacks for different types
         fallback = self.named_type("builtins.object")
         return TypeOperatorType(type_info, an_args, fallback, t.line, t.column)
 

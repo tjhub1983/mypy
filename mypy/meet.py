@@ -1138,10 +1138,14 @@ class TypeMeetVisitor(TypeVisitor[ProperType]):
         assert False, f"This should be never called, got {t}"
 
     def visit_type_operator_type(self, t: TypeOperatorType) -> ProperType:
-        assert False, f"Computed types should be expanded before meet, got {t}"
+        # TODO: This seems very unsatisfactory. Can we do better ever?
+        # (Do we need to do some self check also??)
+        return self.default(t)
 
     def visit_type_for_comprehension(self, t: TypeForComprehension) -> ProperType:
-        assert False, f"Computed types should be expanded before meet, got {t}"
+        # TODO: This seems very unsatisfactory. Can we do better ever?
+        # (Do we need to do some self check also??)
+        return self.default(t)
 
     def meet(self, s: Type, t: Type) -> ProperType:
         return meet_types(s, t)

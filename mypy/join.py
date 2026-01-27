@@ -668,10 +668,16 @@ class TypeJoinVisitor(TypeVisitor[ProperType]):
         assert False, f"This should be never called, got {t}"
 
     def visit_type_operator_type(self, t: TypeOperatorType) -> ProperType:
-        assert False, f"Computed types should be expanded before join, got {t}"
+        # TODO: This seems very unsatisfactory. Can we do better ever?
+        # (Do we need to do some self check also??)
+        if isinstance(self.s, TypeOperatorType):
+            return join_types(self.s.fallback, t.fallback)
+        else:
+            return join_types(self.s, t.fallback)
 
     def visit_type_for_comprehension(self, t: TypeForComprehension) -> ProperType:
-        assert False, f"Computed types should be expanded before join, got {t}"
+        # TODO: XXX: This is pretty dodgy
+        return UnpackType(AnyType(TypeOfAny.special_form))
 
     def default(self, typ: Type) -> ProperType:
         typ = get_proper_type(typ)
