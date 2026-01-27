@@ -183,11 +183,53 @@ reveal_type(c)  # N: Revealed type is "tuple[typing.Member[Literal['x'], builtin
 [typing fixtures/typing-full.pyi]
 
 [case testTypeOperatorMembersTypedDict]
-from typing import Members, TypedDict
+from typing import Members, TypedDict, NotRequired
 
 class Person(TypedDict):
     name: str
     age: int
+    nickname: NotRequired[str]
+
+m: Members[Person]
+reveal_type(m)  # N: Revealed type is "tuple[typing.Member[Literal['name'], builtins.str, Literal['Required'], Never, __main__.Person], typing.Member[Literal['age'], builtins.int, Literal['Required'], Never, __main__.Person], typing.Member[Literal['nickname'], builtins.str, Literal['NotRequired'], Never, __main__.Person]]"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testTypeOperatorMembersTypedDictReadOnly]
+from typing import Members, TypedDict, ReadOnly
+
+class Config(TypedDict):
+    name: str
+    version: ReadOnly[int]
+
+m: Members[Config]
+reveal_type(m)  # N: Revealed type is "tuple[typing.Member[Literal['name'], builtins.str, Literal['Required'], Never, __main__.Config], typing.Member[Literal['version'], builtins.int, Literal['Required'] | Literal['ReadOnly'], Never, __main__.Config]]"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testTypeOperatorMembersTypedDictInheritance]
+# Note: TypedDict inheritance merges all keys into the child, so definer is always the child
+from typing import Members, TypedDict, NotRequired
+
+class Base(TypedDict):
+    id: int
+    name: str
+
+class Extended(Base):
+    email: NotRequired[str]
+
+m: Members[Extended]
+reveal_type(m)  # N: Revealed type is "tuple[typing.Member[Literal['id'], builtins.int, Literal['Required'], Never, __main__.Extended], typing.Member[Literal['name'], builtins.str, Literal['Required'], Never, __main__.Extended], typing.Member[Literal['email'], builtins.str, Literal['NotRequired'], Never, __main__.Extended]]"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testTypeOperatorMembersTypedDictFunctional]
+from typing import Members, TypedDict
+
+Person = TypedDict('Person', {'name': str, 'age': int})
 
 m: Members[Person]
 reveal_type(m)  # N: Revealed type is "tuple[typing.Member[Literal['name'], builtins.str, Literal['Required'], Never, __main__.Person], typing.Member[Literal['age'], builtins.int, Literal['Required'], Never, __main__.Person]]"
