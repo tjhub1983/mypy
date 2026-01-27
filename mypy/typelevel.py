@@ -554,6 +554,10 @@ def _eval_members_impl(
         if sym.type is None:
             continue
 
+        # Skip inferred attributes (those without explicit type annotations)
+        if isinstance(sym.node, Var) and sym.node.is_inferred:
+            continue
+
         if attrs_only:
             # Attrs filters to attributes only (excludes methods).
             # Methods are FuncDef nodes; Callable-typed attributes are Var nodes.

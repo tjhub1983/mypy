@@ -110,3 +110,23 @@ reveal_type(a)  # N: Revealed type is "tuple[typing.Member[Literal['method'], de
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
+
+
+[case testTypeOperatorMembersNoInferred]
+from typing import Attrs, Members
+
+class MyClass:
+    x: int
+    def __init__(self) -> None:
+        self.x = 0
+        self.y = 'test'
+
+a: Members[MyClass]
+reveal_type(a)  # N: Revealed type is "tuple[typing.Member[Literal['x'], builtins.int, Never, Never, __main__.MyClass]]"
+
+b: Attrs[MyClass]
+reveal_type(b)  # N: Revealed type is "tuple[typing.Member[Literal['x'], builtins.int, Never, Never, __main__.MyClass]]"
+
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
