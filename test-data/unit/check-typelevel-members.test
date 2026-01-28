@@ -77,7 +77,7 @@ class Empty:
     _private: int
 
 m: Members[Empty]
-reveal_type(m)  # N: Revealed type is "tuple[()]"
+reveal_type(m)  # N: Revealed type is "tuple[typing.Member[Literal['_private'], builtins.int, Never, Never, __main__.Empty]]"
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
@@ -143,7 +143,7 @@ class MyClass:
         self.y = 'test'
 
 a: Members[MyClass]
-reveal_type(a)  # N: Revealed type is "tuple[typing.Member[Literal['x'], builtins.int, Never, Never, __main__.MyClass]]"
+reveal_type(a)  # N: Revealed type is "tuple[typing.Member[Literal['x'], builtins.int, Never, Never, __main__.MyClass], typing.Member[Literal['__init__'], def (self: __main__.MyClass), Literal['ClassVar'], Never, __main__.MyClass]]"
 
 b: Attrs[MyClass]
 reveal_type(b)  # N: Revealed type is "tuple[typing.Member[Literal['x'], builtins.int, Never, Never, __main__.MyClass]]"

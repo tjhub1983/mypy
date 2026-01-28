@@ -565,10 +565,6 @@ def _eval_members_impl(
             continue
 
         for name, sym in type_info.names.items():
-            # Skip private/dunder names
-            if name.startswith("_"):
-                continue
-
             if sym.type is None:
                 continue
 
@@ -611,10 +607,6 @@ def _eval_typeddict_members(
     members: list[Type] = []
 
     for name, item_type in target.items.items():
-        # Skip private/dunder names
-        if name.startswith("_"):
-            continue
-
         # Build qualifiers for TypedDict keys
         quals: list[str] = []
         if name in target.required_keys:
