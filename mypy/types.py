@@ -595,6 +595,7 @@ class TypeOperatorType(ComputedType):
     def read(cls, data: ReadBuffer) -> TypeOperatorType:
         args = read_type_list(data)
         type_ref = read_str(data)
+        assert read_tag(data) == INSTANCE
         fallback = Instance.read(data)
         typ = TypeOperatorType(None, args, fallback)
         typ.type_ref = type_ref
