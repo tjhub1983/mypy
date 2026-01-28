@@ -267,3 +267,52 @@ x = {'name': 'Alice'}  # nickname is optional
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
+
+[case testNewTypedDictWithComprehensionRoundTrip]
+from typing import NewTypedDict, Members, TypedDict, Iter
+
+class Person(TypedDict):
+    name: str
+    age: int
+
+# Round-trip: Members extracts, NewTypedDict reconstructs
+TD = NewTypedDict[*[m for m in Iter[Members[Person]]]]
+x: TD
+reveal_type(x)  # N: Revealed type is "TypedDict({'name': builtins.str, 'age': builtins.int})"
+x = {'name': 'Alice', 'age': 30}
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testNewTypedDictWithComprehensionFilter]
+from typing import NewTypedDict, Members, TypedDict, Iter, IsSub, GetAttr, Literal
+
+class Person(TypedDict):
+    name: str
+    age: int
+    active: bool
+
+# Filter to only string fields
+TD = NewTypedDict[*[m for m in Iter[Members[Person]] if IsSub[GetAttr[m, Literal['typ']], str]]]
+x: TD
+reveal_type(x)  # N: Revealed type is "TypedDict({'name': builtins.str})"
+x = {'name': 'Alice'}
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testNewTypedDictWithComprehensionFromClass]
+from typing import NewTypedDict, Attrs, Iter
+
+class Point:
+    x: int
+    y: int
+
+# Create TypedDict from class attributes
+TD = NewTypedDict[*[m for m in Iter[Attrs[Point]]]]
+x: TD
+reveal_type(x)  # N: Revealed type is "TypedDict({'x': builtins.int, 'y': builtins.int})"
+x = {'x': 1, 'y': 2}
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]

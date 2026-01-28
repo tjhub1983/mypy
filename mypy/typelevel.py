@@ -172,6 +172,8 @@ class TypeLevelEvaluator:
         """Main entry point: evaluate a type to its simplified form."""
         if isinstance(typ, TypeOperatorType):
             return self.eval_operator(typ)
+        if isinstance(typ, TypeForComprehension):
+            return typ.expand()
         return typ  # Already a concrete type or can't be evaluated
 
     def eval_proper(self, typ: Type) -> ProperType:
@@ -384,7 +386,8 @@ def _eval_get_attr(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type
     if isinstance(target, Instance):
         node = target.type.names.get(name)
         if node is not None and node.type is not None:
-            return node.type
+            # Expand the attribute type with the instance's type arguments
+            return expand_type_by_instance(node.type, target)
         return UninhabitedType()
 
     return UninhabitedType()
@@ -701,7 +704,21 @@ def _eval_new_typeddict(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) ->
     required_keys: set[str] = set()
     readonly_keys: set[str] = set()
 
+    # Flatten args - handle UnpackType from comprehensions
+    flat_args: list[Type] = []
     for arg in typ.args:
+        # First evaluate the arg in case it's a TypeForComprehension
+        evaluated = evaluator.evaluate(arg)
+        if isinstance(evaluated, UnpackType):
+            inner = get_proper_type(evaluated.type)
+            if isinstance(inner, TupleType):
+                flat_args.extend(inner.items)
+            else:
+                flat_args.append(evaluated)
+        else:
+            flat_args.append(evaluated)
+
+    for arg in flat_args:
         arg = get_proper_type(arg)
 
         # Each argument should be a Member[name, typ, quals, init, definer]
