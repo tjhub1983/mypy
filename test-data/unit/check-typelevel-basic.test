@@ -11,6 +11,52 @@ reveal_type(y)  # N: Revealed type is "Literal[False]"
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
 
+[case testTypeOperatorMatches]
+from typing import Matches, Literal
+
+# Matches checks type equivalence (both directions of subtype)
+x1: Matches[int, int]
+reveal_type(x1)  # N: Revealed type is "Literal[True]"
+
+x2: Matches[int, object]
+reveal_type(x2)  # N: Revealed type is "Literal[False]"
+
+x3: Matches[Literal[1], Literal[1]]
+reveal_type(x3)  # N: Revealed type is "Literal[True]"
+
+x4: Matches[Literal[1], int]
+reveal_type(x4)  # N: Revealed type is "Literal[False]"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testTypeOperatorBool]
+# flags: --python-version 3.10
+from typing import Bool, Literal, IsSub, Union
+
+# Bool checks if type contains Literal[True]
+x1: Bool[Literal[True]]
+reveal_type(x1)  # N: Revealed type is "Literal[True]"
+
+x2: Bool[Literal[False]]
+reveal_type(x2)  # N: Revealed type is "Literal[False]"
+
+x3: Bool[Union[Literal[True], Literal[False]]]
+reveal_type(x3)  # N: Revealed type is "Literal[True]"
+
+x4: Bool[bool]
+reveal_type(x4)  # N: Revealed type is "Literal[True]"
+
+# Using Bool to check result of IsSub
+x5: Bool[IsSub[int, object]]
+reveal_type(x5)  # N: Revealed type is "Literal[True]"
+
+x6: Bool[IsSub[int, str]]
+reveal_type(x6)  # N: Revealed type is "Literal[False]"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
 
 [case testTypeOperatorTernarySyntax]
 from typing import IsSub

@@ -188,6 +188,26 @@ class IsSub(Generic[_T, _Base]):
     ...
 
 @_type_operator
+class Matches(Generic[_T, _S]):
+    """
+    Type equivalence check. Returns Literal[True] if T is a subtype of S
+    AND S is a subtype of T.
+    Equivalent to: IsSub[T, S] and IsSub[S, T]
+    """
+
+    ...
+
+@_type_operator
+class Bool(Generic[_T]):
+    """
+    Check if T contains Literal[True].
+    Returns Literal[True] if T is Literal[True] or a union containing it.
+    Equivalent to: IsSub[Literal[True], T] and not IsSub[T, Never]
+    """
+
+    ...
+
+@_type_operator
 class Iter(Generic[_T]):
     """
     Marks a type for iteration in type comprehensions.

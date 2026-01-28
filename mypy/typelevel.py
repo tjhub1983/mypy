@@ -285,6 +285,56 @@ def _eval_issub(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     return evaluator.literal_bool(result)
 
 
+@register_operator("Matches")
+def _eval_matches(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """Evaluate Matches[T, S] - check if T and S are equivalent types.
+
+    Returns Literal[True] if T is a subtype of S AND S is a subtype of T.
+    Equivalent to: IsSub[T, S] and IsSub[S, T]
+    """
+    if len(typ.args) != 2:
+        return UninhabitedType()
+
+    lhs, rhs = typ.args
+
+    left_proper = evaluator.eval_proper(lhs)
+    right_proper = evaluator.eval_proper(rhs)
+
+    # Handle type variables - may be undecidable
+    if has_type_vars(left_proper) or has_type_vars(right_proper):
+        return EXPANSION_ANY
+
+    # Both directions must hold for type equivalence
+    result = is_subtype(left_proper, right_proper) and is_subtype(right_proper, left_proper)
+
+    return evaluator.literal_bool(result)
+
+
+@register_operator("Bool")
+def _eval_bool(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """Evaluate Bool[T] - check if T contains Literal[True].
+
+    Returns Literal[True] if T is Literal[True] or a union containing Literal[True].
+    Equivalent to: IsSub[Literal[True], T] and not IsSub[T, Never]
+    """
+    if len(typ.args) != 1:
+        return UninhabitedType()
+
+    arg_proper = evaluator.eval_proper(typ.args[0])
+
+    # Handle type variables - may be undecidable
+    if has_type_vars(arg_proper):
+        return EXPANSION_ANY
+
+    # Check if Literal[True] is a subtype of arg (i.e., arg contains True)
+    # and arg is not Never
+    literal_true = evaluator.literal_bool(True)
+    contains_true = is_subtype(literal_true, arg_proper)
+    is_never = isinstance(arg_proper, UninhabitedType)
+
+    return evaluator.literal_bool(contains_true and not is_never)
+
+
 def extract_literal_bool(typ: Type) -> bool | None:
     """Extract bool value from LiteralType."""
     typ = get_proper_type(typ)
