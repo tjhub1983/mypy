@@ -1386,6 +1386,8 @@ def analyze_class_attribute_with_initfield(
 
 ### 8.1 Unit Tests
 
+MAYBE?
+
 Create comprehensive tests in `mypy/test/`:
 
 1. **`test_typelevel_basic.py`** - Basic type operators
@@ -1499,8 +1501,8 @@ Port examples from the PEP:
 ### 2b. Member/Param Accessors as Type Aliases
 **Decision**: `GetName`, `GetType`, `GetQuals`, `GetInit`, `GetDefiner` are type aliases using `GetAttr`, not separate type operators. Since `Member` and `Param` are regular classes with attributes, `GetAttr[Member[...], Literal["name"]]` works directly.
 
-### 3. ComputedType Hierarchy (NOT ProperType)
-**Decision**: All computed types (`TypeOperatorType`, `TypeForComprehension`) inherit from a common `ComputedType` base class. Like `TypeAliasType`, `ComputedType` is NOT a `ProperType` and must be expanded before use in most type operations. This is handled by a single `isinstance(typ, ComputedType)` check in `get_proper_type()`. Note: Conditional types are represented as `_Cond[...]` TypeOperatorType, not a separate class.
+### 3. ComputedType Hierarchy
+**Decision**: All computed types (`TypeOperatorType`, `TypeForComprehension`) inherit from a common `ComputedType` base class. Like `TypeAliasType`, `ComputedType` is (unfortunately) a `ProperType` *but* must still be expanded before use in most type operations. When expansion gets stuck, it returns the same type. This is handled by a single `isinstance(typ, ComputedType)` check in `get_proper_type()`. Note: Conditional types are represented as `_Cond[...]` TypeOperatorType, not a separate class.
 
 ### 4. Lazy Evaluation with Caching
 **Decision**: Type-level computations are evaluated when needed (e.g., during subtype checking) rather than immediately during parsing. Results should be cached.
@@ -1547,6 +1549,7 @@ Port examples from the PEP:
 ## Open Questions for Discussion
 
 1. **Protocol vs TypedDict creation**: Should `NewProtocol` create true protocols (with `is_protocol=True`) or just structural types?
+   **RESOLVED**: Obviously true protocols.
 
 2. **Type alias recursion**: How to handle recursive type aliases that use type-level computation?
 
