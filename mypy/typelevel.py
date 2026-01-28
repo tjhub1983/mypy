@@ -755,6 +755,31 @@ def _eval_length(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     return UninhabitedType()
 
 
+@register_operator("RaiseError")
+def _eval_raise_error(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """Evaluate RaiseError[S] -> emit a type error with message S.
+
+    RaiseError is used to emit custom type errors during type-level computation.
+    The argument must be a Literal[str] containing the error message.
+    Returns Never after emitting the error.
+    """
+
+    args = evaluator.flatten_args(typ.args)
+    if not args:
+        msg = "RaiseError called without arguments!"
+    else:
+        msg = extract_literal_string(args[0]) or str(args[0])
+
+    if args[1:]:
+        msg += ": " + ", ".join(str(t) for t in args[1:])
+
+    # Use serious=True to bypass in_checked_function() check which requires
+    # self.options to be set on the SemanticAnalyzer
+    evaluator.api.fail(msg, typ, serious=True)
+
+    return UninhabitedType()
+
+
 def evaluate_comprehension(evaluator: TypeLevelEvaluator, typ: TypeForComprehension) -> Type:
     """Evaluate a TypeForComprehension.
 

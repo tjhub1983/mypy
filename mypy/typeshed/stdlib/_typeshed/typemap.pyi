@@ -272,3 +272,12 @@ class Length(Generic[_T]):
     """
 
     ...
+
+@_type_operator
+class RaiseError(Generic[_S, Unpack[_Ts]]):
+    """
+    Emit a type error with the given message.
+    RaiseError[Literal["error message"]] emits the error and returns Never.
+    """
+
+    ...

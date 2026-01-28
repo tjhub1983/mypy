@@ -1211,6 +1211,7 @@ if sys.version_info >= (3, 15):
         "GetAnnotations",
         "DropAnnotations",
         "Length",
+        "RaiseError",
         # Data types
         "Member",
         "Param",
@@ -1267,6 +1268,7 @@ if sys.version_info >= (3, 15):
         ParamQuals as ParamQuals,
         PosDefaultParam as PosDefaultParam,
         PosParam as PosParam,
+        RaiseError as RaiseError,
         Slice as Slice,
         Uncapitalize as Uncapitalize,
         Uppercase as Uppercase,
