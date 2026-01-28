@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Final
 
 from mypy.expandtype import expand_type, expand_type_by_instance
 from mypy.maptype import map_instance_to_supertype
+from mypy.nodes import FuncDef, Var
 from mypy.subtypes import is_subtype
 from mypy.types import (
     AnyType,
@@ -37,8 +38,6 @@ from mypy.types import (
     has_type_vars,
     is_stuck_expansion,
 )
-
-from mypy.nodes import FuncDef, Var
 
 if TYPE_CHECKING:
     from mypy.nodes import TypeInfo
@@ -620,9 +619,7 @@ def _eval_members_impl(
 
 
 def _eval_typeddict_members(
-    evaluator: TypeLevelEvaluator,
-    target: TypedDictType,
-    member_type_info: TypeInfo,
+    evaluator: TypeLevelEvaluator, target: TypedDictType, member_type_info: TypeInfo
 ) -> Type:
     """Evaluate Members/Attrs for a TypedDict type."""
     members: list[Type] = []
@@ -645,9 +642,7 @@ def _eval_typeddict_members(
         if len(quals) == 1:
             quals_type: Type = evaluator.literal_str(quals[0])
         else:
-            quals_type = UnionType.make_union(
-                [evaluator.literal_str(q) for q in quals]
-            )
+            quals_type = UnionType.make_union([evaluator.literal_str(q) for q in quals])
 
         member_type = Instance(
             member_type_info,
@@ -774,10 +769,7 @@ def _eval_new_typeddict(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) ->
         fallback = evaluator.api.named_type("builtins.dict")
 
     return TypedDictType(
-        items=items,
-        required_keys=required_keys,
-        readonly_keys=readonly_keys,
-        fallback=fallback,
+        items=items, required_keys=required_keys, readonly_keys=readonly_keys, fallback=fallback
     )
 
 

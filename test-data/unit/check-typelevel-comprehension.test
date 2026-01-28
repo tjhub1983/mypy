@@ -73,4 +73,3 @@ reveal_type(x)  # N: Revealed type is "tuple[builtins.list[builtins.int], builti
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
-
