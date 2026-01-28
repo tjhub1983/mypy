@@ -210,6 +210,24 @@ class TypeLevelEvaluator:
         """Create a Literal[int] type."""
         return LiteralType(value, self.api.named_type("builtins.int"))
 
+    def flatten_args(self, args: list[Type]) -> list[Type]:
+        """Flatten type arguments, evaluating and unpacking as needed.
+
+        Handles UnpackType from comprehensions by expanding the inner TupleType.
+        """
+        flat_args: list[Type] = []
+        for arg in args:
+            evaluated = self.evaluate(arg)
+            if isinstance(evaluated, UnpackType):
+                inner = get_proper_type(evaluated.type)
+                if isinstance(inner, TupleType):
+                    flat_args.extend(inner.items)
+                else:
+                    flat_args.append(evaluated)
+            else:
+                flat_args.append(evaluated)
+        return flat_args
+
     def literal_str(self, value: str) -> LiteralType:
         """Create a Literal[str] type."""
         return LiteralType(value, self.api.named_type("builtins.str"))
@@ -704,21 +722,7 @@ def _eval_new_typeddict(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) ->
     required_keys: set[str] = set()
     readonly_keys: set[str] = set()
 
-    # Flatten args - handle UnpackType from comprehensions
-    flat_args: list[Type] = []
-    for arg in typ.args:
-        # First evaluate the arg in case it's a TypeForComprehension
-        evaluated = evaluator.evaluate(arg)
-        if isinstance(evaluated, UnpackType):
-            inner = get_proper_type(evaluated.type)
-            if isinstance(inner, TupleType):
-                flat_args.extend(inner.items)
-            else:
-                flat_args.append(evaluated)
-        else:
-            flat_args.append(evaluated)
-
-    for arg in flat_args:
+    for arg in evaluator.flatten_args(typ.args):
         arg = get_proper_type(arg)
 
         # Each argument should be a Member[name, typ, quals, init, definer]
