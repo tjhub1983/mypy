@@ -303,3 +303,15 @@ class Member(Generic[_Name, _Type, _Quals, _Init, _Definer]):
     quals: _Quals
     init: _Init
     definer: _Definer
+
+
+# _MP = TypeVar("_MP", bound=Member[Any, Any, Any, Any, Any] | Param[Any, Any, Any])
+# _M = TypeVar("_M", bound=Member[Any, Any, Any, Any, Any])
+_MP = TypeVar("_MP")
+_M = TypeVar("_M")
+
+GetName = GetAttr[_MP, Literal["name"]]
+GetType = GetAttr[_MP, Literal["typ"]]
+GetQuals = GetAttr[_MP, Literal["quals"]]
+GetInit = GetAttr[_M, Literal["init"]]
+GetDefiner = GetAttr[_M, Literal["definer"]]

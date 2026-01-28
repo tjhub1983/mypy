@@ -598,3 +598,30 @@ def g[T](
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
+
+[case testTypeOperatorTypedDictParam]
+# flags: --python-version 3.14
+
+from typing import Callable, Attrs, GetName, TypedDict, Iter
+
+class BaseTypedDict(TypedDict):
+    pass
+
+
+def foo[T: BaseTypedDict](x: T) -> tuple[
+    *[GetName[m] for m in Iter[Attrs[T]]]
+]:
+    return tuple(x.keys())  # type: ignore
+
+
+class Sigh(TypedDict):
+    x: int
+    y: str
+
+
+td: Sigh = {'x': 10, 'y': 'hmmm'}
+x = foo(td)
+reveal_type(x)  # N: Revealed type is "tuple[Literal['x'], Literal['y']]"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]

@@ -137,8 +137,11 @@ class FromUnion(Generic[_T]):
 
 # --- Member/Param Accessors (defined as type aliases using GetAttr) ---
 
-_MP = TypeVar("_MP", bound=Member[Any, Any, Any, Any, Any] | Param[Any, Any, Any])
-_M = TypeVar("_M", bound=Member[Any, Any, Any, Any, Any])
+# _MP = TypeVar("_MP", bound=Member[Any, Any, Any, Any, Any] | Param[Any, Any, Any])
+# _M = TypeVar("_M", bound=Member[Any, Any, Any, Any, Any])
+
+_MP = TypeVar("_MP")
+_M = TypeVar("_M")
 
 
 GetName = GetAttr[_MP, Literal["name"]]
