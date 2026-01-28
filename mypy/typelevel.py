@@ -145,12 +145,7 @@ def lift_over_unions(
             if not (isinstance(result, ProperType) and isinstance(result, UninhabitedType)):
                 results.append(result)
 
-        if not results:
-            return UninhabitedType()
-        elif len(results) == 1:
-            return results[0]
-        else:
-            return UnionType.make_union(results)
+        return UnionType.make_union(results)
 
     return wrapper
 
@@ -614,13 +609,7 @@ def _eval_typeddict_members(
         if name in target.readonly_keys:
             quals.append("ReadOnly")
 
-        # Create qualifier type
-        if len(quals) == 0:
-            quals_type: Type = UninhabitedType()
-        elif len(quals) == 1:
-            quals_type = evaluator.literal_str(quals[0])
-        else:
-            quals_type = UnionType.make_union([evaluator.literal_str(q) for q in quals])
+        quals_type = UnionType.make_union([evaluator.literal_str(q) for q in quals])
 
         member_type = Instance(
             member_type_info,
