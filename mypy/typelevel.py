@@ -160,8 +160,6 @@ class EvaluationStuck(Exception):
 
 class TypeLevelEvaluator:
     """Evaluates type-level computations to concrete types.
-
-    Phase 3A: Core conditional type evaluation (_Cond and IsSub).
     """
 
     def __init__(self, api: SemanticAnalyzerInterface) -> None:
@@ -194,7 +192,6 @@ class TypeLevelEvaluator:
             # print("NO EVALUATOR", fullname)
 
             # Unknown operator - return Any for now
-            # In Phase 3B, unregistered operators will be handled appropriately
             return EXPANSION_ANY
 
         return evaluator(self, typ)
@@ -234,9 +231,6 @@ class TypeLevelEvaluator:
     def tuple_type(self, items: list[Type]) -> TupleType:
         """Create a tuple type with the given items."""
         return TupleType(items, self.api.named_type("builtins.tuple"))
-
-
-# --- Operator Implementations for Phase 3A ---
 
 
 @register_operator("_Cond")
@@ -324,9 +318,6 @@ def extract_literal_string(typ: Type) -> str | None:
     return None
 
 
-# --- Phase 3B: Type Introspection Operators ---
-
-
 @register_operator("GetArg")
 @lift_over_unions
 def _eval_get_arg(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
@@ -408,9 +399,6 @@ def _eval_get_attr(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type
         return UninhabitedType()
 
     return UninhabitedType()
-
-
-# --- Phase 3B: String Operations ---
 
 
 @register_operator("Slice")
@@ -518,9 +506,6 @@ def _eval_uncapitalize(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> 
         return evaluator.literal_str(result)
 
     return UninhabitedType()
-
-
-# --- Phase 3B: Object Introspection Operators ---
 
 
 @register_operator("Members")
@@ -699,9 +684,6 @@ def create_member_type(
     )
 
 
-# --- Phase 3B: Type Construction Operators ---
-
-
 @register_operator("NewTypedDict")
 def _eval_new_typeddict(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     """Evaluate NewTypedDict[*Members] -> create a new TypedDict from Member types.
@@ -771,9 +753,6 @@ def _eval_new_typeddict(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) ->
     return TypedDictType(
         items=items, required_keys=required_keys, readonly_keys=readonly_keys, fallback=fallback
     )
-
-
-# --- Phase 3B: Utility Operators ---
 
 
 @register_operator("Length")
