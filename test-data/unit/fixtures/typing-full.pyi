@@ -43,6 +43,7 @@ NotRequired = 0
 ReadOnly = 0
 Self = 0
 Unpack = 0
+Never = 0
 Callable: _SpecialForm
 Union: _SpecialForm
 Literal: _SpecialForm
@@ -235,6 +236,9 @@ class TypeAliasType:
 
 # Type computation!
 
+class BaseTypedDict(TypedDict):
+    pass
+
 def _type_operator(cls: type[T]) -> type[T]: ...
 
 @_type_operator
@@ -290,9 +294,9 @@ class NewTypedDict(Generic[Unpack[_Ts]]): ...
 # Member data type for type-level computation
 _Name = TypeVar('_Name')
 _Type = TypeVar('_Type')
-_Quals = TypeVar('_Quals')
-_Init = TypeVar('_Init')
-_Definer = TypeVar('_Definer')
+_Quals = TypeVar("_Quals", default=Never)
+_Init = TypeVar("_Init", default=Never)
+_Definer = TypeVar("_Definer", default=Never)
 
 class Member(Generic[_Name, _Type, _Quals, _Init, _Definer]):
     """

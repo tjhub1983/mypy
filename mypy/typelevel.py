@@ -160,8 +160,7 @@ class EvaluationStuck(Exception):
 
 
 class TypeLevelEvaluator:
-    """Evaluates type-level computations to concrete types.
-    """
+    """Evaluates type-level computations to concrete types."""
 
     def __init__(self, api: SemanticAnalyzerInterface) -> None:
         self.api = api

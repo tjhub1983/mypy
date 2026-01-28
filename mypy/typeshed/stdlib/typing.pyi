@@ -1230,10 +1230,13 @@ if sys.version_info >= (3, 15):
         # Type aliases
         "MemberQuals",
         "ParamQuals",
+        # Misc
+        "BaseTypedDict",
     ]
     from _typeshed.typemap import (
         Attrs as Attrs,
         ArgsParam as ArgsParam,
+        BaseTypedDict as BaseTypedDict,
         Capitalize as Capitalize,
         Concat as Concat,
         DefaultParam as DefaultParam,

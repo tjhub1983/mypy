@@ -602,11 +602,7 @@ def g[T](
 [case testTypeOperatorTypedDictParam]
 # flags: --python-version 3.14
 
-from typing import Callable, Attrs, GetName, TypedDict, Iter
-
-class BaseTypedDict(TypedDict):
-    pass
-
+from typing import BaseTypedDict, Callable, Attrs, GetName, TypedDict, Iter
 
 def foo[T: BaseTypedDict](x: T) -> tuple[
     *[GetName[m] for m in Iter[Attrs[T]]]

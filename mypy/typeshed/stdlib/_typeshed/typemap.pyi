@@ -5,8 +5,12 @@ and typemap.typing.
 """
 
 import typing_extensions
-from typing import Generic, Literal, TypeVar
-from typing_extensions import TypeVarTuple, Unpack
+from typing import Generic, Literal, TypeVar, TypedDict
+from typing_extensions import TypeVarTuple, Unpack, Never
+
+class BaseTypedDict(TypedDict):
+    pass
+
 
 _S = TypeVar("_S")
 _T = TypeVar("_T")
@@ -25,9 +29,9 @@ ParamQuals: typing_extensions.TypeAlias = Literal["positional", "keyword", "defa
 
 _Name = TypeVar("_Name")
 _Type = TypeVar("_Type")
-_Quals = TypeVar("_Quals")
-_Init = TypeVar("_Init")
-_Definer = TypeVar("_Definer")
+_Quals = TypeVar("_Quals", default=Never)
+_Init = TypeVar("_Init", default=Never)
+_Definer = TypeVar("_Definer", default=Never)
 
 class Member(Generic[_Name, _Type, _Quals, _Init, _Definer]):
     """
