@@ -257,6 +257,27 @@ reveal_type(x2)  # N: Revealed type is "Literal['he']"
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
 
+[case testTypeOperatorTupleSlice]
+# Test tuple slice operator
+from typing import Slice, Literal
+
+x1: Slice[tuple[int, str, float, bool], Literal[1], Literal[3]]
+reveal_type(x1)  # N: Revealed type is "tuple[builtins.str, builtins.float]"
+
+x2: Slice[tuple[int, str, float], Literal[0], Literal[2]]
+reveal_type(x2)  # N: Revealed type is "tuple[builtins.int, builtins.str]"
+
+# Slice from start
+x3: Slice[tuple[int, str, float], None, Literal[2]]
+reveal_type(x3)  # N: Revealed type is "tuple[builtins.int, builtins.str]"
+
+# Slice to end
+x4: Slice[tuple[int, str, float], Literal[1], None]
+reveal_type(x4)  # N: Revealed type is "tuple[builtins.str, builtins.float]"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
 [case testTypeOperatorLength]
 # Test Length operator
 from typing import Length, Literal, Tuple

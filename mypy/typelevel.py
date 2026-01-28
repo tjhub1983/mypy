@@ -399,11 +399,11 @@ def _eval_get_attr(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type
 @register_operator("Slice")
 @lift_over_unions
 def _eval_slice(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
-    """Evaluate Slice[S, Start, End] - slice a literal string."""
+    """Evaluate Slice[S, Start, End] - slice a literal string or tuple type."""
     if len(typ.args) != 3:
         return UninhabitedType()
 
-    s = extract_literal_string(evaluator.eval_proper(typ.args[0]))
+    target = evaluator.eval_proper(typ.args[0])
 
     # Handle start - can be int or None
     start_type = evaluator.eval_proper(typ.args[1])
@@ -423,9 +423,16 @@ def _eval_slice(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
         if end is None:
             return UninhabitedType()
 
+    # Handle literal string slicing
+    s = extract_literal_string(target)
     if s is not None:
         result = s[start:end]
         return evaluator.literal_str(result)
+
+    # Handle tuple type slicing
+    if isinstance(target, TupleType):
+        sliced_items = target.items[start:end]
+        return evaluator.tuple_type(sliced_items)
 
     return UninhabitedType()
 
