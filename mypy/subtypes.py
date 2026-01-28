@@ -1165,7 +1165,7 @@ class SubtypeVisitor(TypeVisitor[bool]):
     def visit_type_operator_type(self, left: TypeOperatorType) -> bool:
         # PERF: Using is_same_type can mean exponential time checking...
         if isinstance(self.right, TypeOperatorType):
-            if left.fullname == self.right.fullname and len(left.args) == len(self.right.args):
+            if left.type == self.right.type and len(left.args) == len(self.right.args):
                 if all(is_same_type(la, ra) for la, ra in zip(left.args, self.right.args)):
                     return True
         return self._is_subtype(left.fallback, self.right)

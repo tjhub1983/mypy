@@ -239,6 +239,50 @@ def baz() -> int:
 [rechecked mod2]
 [stale]
 
+[case testIncrementalTypeOperator]
+# flags: --python-version 3.14
+import a
+[file a.py]
+from typing import (
+    NewTypedDict,
+    Iter,
+    Attrs,
+    GetName,
+    GetType,
+    Member,
+)
+
+type PropsOnly[T] = list[
+    NewTypedDict[
+        *[
+            Member[GetName[p], GetType[p]]
+            for p in Iter[Attrs[T]]
+        ]
+    ]
+]
+[file a.py.2]
+from typing import (
+    NewTypedDict,
+    Iter,
+    Attrs,
+    GetName,
+    GetType,
+    Member,
+)
+
+type PropsOnly[T] = list[
+    NewTypedDict[
+        *[
+            Member[GetName[p], GetType[p]]
+            for p in Iter[Attrs[T]]
+        ]
+    ]
+]
+# dummy change
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
 [case testIncrementalMethodInterfaceChange]
 import mod1
 

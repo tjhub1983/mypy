@@ -519,7 +519,7 @@ class TypeOperatorType(ComputedType):
 
     def __init__(
         self,
-        type: mypy.nodes.TypeInfo | None,  # The TypeInfo for the operator (e.g., typing.GetArg)
+        type: mypy.nodes.TypeInfo,  # The TypeInfo for the operator (e.g., typing.GetArg)
         args: list[Type],  # The type arguments
         fallback: Instance,
         line: int = -1,
@@ -534,32 +534,21 @@ class TypeOperatorType(ComputedType):
     def accept(self, visitor: TypeVisitor[T]) -> T:
         return visitor.visit_type_operator_type(self)
 
-    @property
-    def fullname(self) -> str:
-        if self.type is not None:
-            return self.type.fullname
-        assert self.type_ref is not None
-        return self.type_ref
-
-    @property
-    def name(self) -> str:
-        return self.fullname.split(".")[-1]
-
     def __hash__(self) -> int:
-        return hash((self.fullname, tuple(self.args)))
+        return hash((self.type, tuple(self.args)))
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, TypeOperatorType):
             return NotImplemented
-        return self.fullname == other.fullname and self.args == other.args
+        return self.type == other.type and self.args == other.args
 
     def __repr__(self) -> str:
-        return f"TypeOperatorType({self.fullname}, {self.args})"
+        return f"TypeOperatorType({self.type.fullname}, {self.args})"
 
     def serialize(self) -> JsonDict:
         data: JsonDict = {
             ".class": "TypeOperatorType",
-            "type_ref": self.fullname,
+            "type_ref": self.type.fullname,
             "args": [arg.serialize() for arg in self.args],
             "fallback": self.fallback.serialize(),
         }
@@ -574,8 +563,8 @@ class TypeOperatorType(ComputedType):
             assert isinstance(args_list, list)
             args = [deserialize_type(arg) for arg in args_list]
         fallback = Instance.deserialize(data["fallback"])
-        typ = TypeOperatorType(None, args, fallback)
-        typ.type_ref = data["type_ref"]
+        typ = TypeOperatorType(NOT_READY, args, fallback)
+        typ.type_ref = data["type_ref"]  # Will be fixed up by fixup.py later.
         return typ
 
     def copy_modified(self, *, args: list[Type] | None = None) -> TypeOperatorType:
@@ -590,7 +579,7 @@ class TypeOperatorType(ComputedType):
     def write(self, data: WriteBuffer) -> None:
         write_tag(data, TYPE_OPERATOR_TYPE)
         write_type_list(data, self.args)
-        write_str(data, self.fullname)
+        write_str(data, self.type.fullname)
         self.fallback.write(data)
         write_tag(data, END_TAG)
 
@@ -600,7 +589,7 @@ class TypeOperatorType(ComputedType):
         type_ref = read_str(data)
         assert read_tag(data) == INSTANCE
         fallback = Instance.read(data)
-        typ = TypeOperatorType(None, args, fallback)
+        typ = TypeOperatorType(NOT_READY, args, fallback)
         typ.type_ref = type_ref
         assert read_tag(data) == END_TAG
         return typ

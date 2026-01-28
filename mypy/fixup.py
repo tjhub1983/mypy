@@ -378,8 +378,15 @@ class TypeFixer(TypeVisitor[None]):
     def visit_type_type(self, t: TypeType) -> None:
         t.item.accept(self)
 
-    def visit_type_operator_type(self, t: TypeOperatorType) -> None:
-        for a in t.args:
+    def visit_type_operator_type(self, op: TypeOperatorType) -> None:
+        type_ref = op.type_ref
+        if type_ref is None:
+            return  # We've already been here.
+        op.type_ref = None
+        op.type = lookup_fully_qualified_typeinfo(
+            self.modules, type_ref, allow_missing=self.allow_missing
+        )
+        for a in op.args:
             a.accept(self)
 
     def visit_type_for_comprehension(self, t: TypeForComprehension) -> None:

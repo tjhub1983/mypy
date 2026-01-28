@@ -181,7 +181,7 @@ class TypeLevelEvaluator:
 
     def eval_operator(self, typ: TypeOperatorType) -> Type:
         """Evaluate a type operator by dispatching to registered handler."""
-        evaluator = _OPERATOR_EVALUATORS.get(typ.name)
+        evaluator = _OPERATOR_EVALUATORS.get(typ.type.name)
 
         if evaluator is None:
             # print("NO EVALUATOR", fullname)
