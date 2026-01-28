@@ -191,7 +191,7 @@ class Person(TypedDict):
     nickname: NotRequired[str]
 
 m: Members[Person]
-reveal_type(m)  # N: Revealed type is "tuple[typing.Member[Literal['name'], builtins.str, Literal['Required'], Never, Never], typing.Member[Literal['age'], builtins.int, Literal['Required'], Never, Never], typing.Member[Literal['nickname'], builtins.str, Literal['NotRequired'], Never, Never]]"
+reveal_type(m)  # N: Revealed type is "tuple[typing.Member[Literal['name'], builtins.str, Never, Never, Never], typing.Member[Literal['age'], builtins.int, Never, Never, Never], typing.Member[Literal['nickname'], builtins.str, Literal['NotRequired'], Never, Never]]"
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
@@ -204,7 +204,7 @@ class Config(TypedDict):
     version: ReadOnly[int]
 
 m: Members[Config]
-reveal_type(m)  # N: Revealed type is "tuple[typing.Member[Literal['name'], builtins.str, Literal['Required'], Never, Never], typing.Member[Literal['version'], builtins.int, Literal['Required'] | Literal['ReadOnly'], Never, Never]]"
+reveal_type(m)  # N: Revealed type is "tuple[typing.Member[Literal['name'], builtins.str, Never, Never, Never], typing.Member[Literal['version'], builtins.int, Literal['ReadOnly'], Never, Never]]"
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
@@ -220,7 +220,7 @@ class Extended(Base):
     email: NotRequired[str]
 
 m: Members[Extended]
-reveal_type(m)  # N: Revealed type is "tuple[typing.Member[Literal['id'], builtins.int, Literal['Required'], Never, Never], typing.Member[Literal['name'], builtins.str, Literal['Required'], Never, Never], typing.Member[Literal['email'], builtins.str, Literal['NotRequired'], Never, Never]]"
+reveal_type(m)  # N: Revealed type is "tuple[typing.Member[Literal['id'], builtins.int, Never, Never, Never], typing.Member[Literal['name'], builtins.str, Never, Never, Never], typing.Member[Literal['email'], builtins.str, Literal['NotRequired'], Never, Never]]"
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
@@ -231,18 +231,18 @@ from typing import Members, TypedDict
 Person = TypedDict('Person', {'name': str, 'age': int})
 
 m: Members[Person]
-reveal_type(m)  # N: Revealed type is "tuple[typing.Member[Literal['name'], builtins.str, Literal['Required'], Never, Never], typing.Member[Literal['age'], builtins.int, Literal['Required'], Never, Never]]"
+reveal_type(m)  # N: Revealed type is "tuple[typing.Member[Literal['name'], builtins.str, Never, Never, Never], typing.Member[Literal['age'], builtins.int, Never, Never, Never]]"
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
 
 [case testTypeOperatorNewTypedDict]
-from typing import NewTypedDict, Member, Literal
+from typing import NewTypedDict, Member, Literal, Never
 
 # Create a TypedDict from Member types
 TD = NewTypedDict[
-    Member[Literal['name'], str, Literal['Required'], int, int],
-    Member[Literal['age'], int, Literal['Required'], int, int],
+    Member[Literal['name'], str, Never, int, int],
+    Member[Literal['age'], int, Never, int, int],
 ]
 
 x: TD
@@ -253,11 +253,11 @@ x = {'name': 'Alice', 'age': 30}
 [typing fixtures/typing-full.pyi]
 
 [case testTypeOperatorNewTypedDictNotRequired]
-from typing import NewTypedDict, Member, Literal
+from typing import NewTypedDict, Member, Literal, Never
 
 # Create a TypedDict with NotRequired field
 TD = NewTypedDict[
-    Member[Literal['name'], str, Literal['Required'], int, int],
+    Member[Literal['name'], str, Never, int, int],
     Member[Literal['nickname'], str, Literal['NotRequired'], int, int],
 ]
 

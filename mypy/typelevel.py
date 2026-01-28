@@ -607,17 +607,18 @@ def _eval_typeddict_members(
 
     for name, item_type in target.items.items():
         # Build qualifiers for TypedDict keys
+        # Required is the default, so only add NotRequired when not required
         quals: list[str] = []
-        if name in target.required_keys:
-            quals.append("Required")
-        else:
+        if name not in target.required_keys:
             quals.append("NotRequired")
         if name in target.readonly_keys:
             quals.append("ReadOnly")
 
         # Create qualifier type
-        if len(quals) == 1:
-            quals_type: Type = evaluator.literal_str(quals[0])
+        if len(quals) == 0:
+            quals_type: Type = UninhabitedType()
+        elif len(quals) == 1:
+            quals_type = evaluator.literal_str(quals[0])
         else:
             quals_type = UnionType.make_union([evaluator.literal_str(q) for q in quals])
 
