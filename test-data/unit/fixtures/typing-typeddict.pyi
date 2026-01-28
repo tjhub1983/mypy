@@ -81,3 +81,8 @@ class _TypedDict(Mapping[str, object]):
     def __delitem__(self, k: NoReturn) -> None: ...
 
 class _SpecialForm: pass
+
+# A dummy TypedDict declaration inside typing.pyi, to test that
+# semanal can handle it.
+class _TestBaseTypedDict(TypedDict):
+    pass

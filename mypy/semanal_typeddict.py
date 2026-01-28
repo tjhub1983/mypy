@@ -118,6 +118,8 @@ class TypedDictAnalyzer:
             info = self.build_typeddict_typeinfo(
                 defn.name, field_types, required_keys, readonly_keys, defn.line, existing_info
             )
+            if not info:
+                return True, None
             defn.analyzed = TypedDictExpr(info)
             defn.analyzed.line = defn.line
             defn.analyzed.column = defn.column
@@ -173,6 +175,8 @@ class TypedDictAnalyzer:
         info = self.build_typeddict_typeinfo(
             defn.name, field_types, required_keys, readonly_keys, defn.line, existing_info
         )
+        if not info:
+            return True, None
         defn.analyzed = TypedDictExpr(info)
         defn.analyzed.line = defn.line
         defn.analyzed.column = defn.column
@@ -489,7 +493,10 @@ class TypedDictAnalyzer:
                 call.line,
                 existing_info,
             )
-            info.line = node.line
+
+        if not info:
+            return True, None, []
+        info.line = node.line
         # Store generated TypeInfo under both names, see semanal_namedtuple for more details.
         if name != var_name or is_func_scope:
             self.api.add_symbol_skip_local(name, info)
@@ -597,14 +604,16 @@ class TypedDictAnalyzer:
         readonly_keys: set[str],
         line: int,
         existing_info: TypeInfo | None,
-    ) -> TypeInfo:
+    ) -> TypeInfo | None:
         # Prefer typing then typing_extensions if available.
         fallback = (
             self.api.named_type_or_none("typing._TypedDict", [])
             or self.api.named_type_or_none("typing_extensions._TypedDict", [])
             or self.api.named_type_or_none("mypy_extensions._TypedDict", [])
         )
-        assert fallback is not None
+        # Adding a TypedDict subtype into typing sometimes causes this deferral
+        if fallback is None:
+            return None
         info = existing_info or self.api.basic_new_typeinfo(name, fallback, line)
         typeddict_type = TypedDictType(item_types, required_keys, readonly_keys, fallback)
         if has_placeholder(typeddict_type):
