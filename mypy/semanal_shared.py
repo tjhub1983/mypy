@@ -17,6 +17,7 @@ from mypy.nodes import (
     Decorator,
     Expression,
     FuncDef,
+    MypyFile,
     NameExpr,
     Node,
     OverloadedFuncDef,
@@ -155,6 +156,7 @@ class SemanticAnalyzerInterface(SemanticAnalyzerCoreInterface):
     """
 
     tvar_scope: TypeVarLikeScope
+    modules: dict[str, MypyFile]
 
     @abstractmethod
     def lookup(

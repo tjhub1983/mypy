@@ -549,8 +549,9 @@ def _eval_members_impl(
 
     # Iterate through MRO in reverse (base classes first) to include inherited members
     for type_info in reversed(target.type.mro):
-        # Skip builtins.object to avoid noise
-        if type_info.fullname == "builtins.object":
+        # Skip types defined in stub files
+        module = evaluator.api.modules.get(type_info.module_name)
+        if module is not None and module.is_stub:
             continue
 
         for name, sym in type_info.names.items():
