@@ -683,6 +683,83 @@ def create_member_type(
     )
 
 
+# --- Phase 3B: Type Construction Operators ---
+
+
+@register_operator("NewTypedDict")
+def _eval_new_typeddict(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """Evaluate NewTypedDict[*Members] -> create a new TypedDict from Member types.
+
+    This is the inverse of Members[TypedDict].
+    """
+    # Get the Member TypeInfo to verify arguments
+    member_info = evaluator.api.named_type_or_none("typing.Member")
+    if member_info is None:
+        return UninhabitedType()
+
+    items: dict[str, Type] = {}
+    required_keys: set[str] = set()
+    readonly_keys: set[str] = set()
+
+    for arg in typ.args:
+        arg = get_proper_type(arg)
+
+        # Each argument should be a Member[name, typ, quals, init, definer]
+        if not isinstance(arg, Instance) or arg.type != member_info.type:
+            # Not a Member type - can't construct TypedDict
+            return UninhabitedType()
+
+        if len(arg.args) < 3:
+            return UninhabitedType()
+
+        # Extract name, type, and qualifiers from Member args
+        name_type, item_type, quals, *_ = arg.args
+        name = extract_literal_string(name_type)
+        if name is None:
+            return UninhabitedType()
+        is_required = True  # Default is Required
+        is_readonly = False
+
+        # Check qualifiers - can be a single Literal or a Union of Literals
+        quals_proper = get_proper_type(quals)
+        qual_strings: list[str] = []
+
+        if isinstance(quals_proper, LiteralType) and isinstance(quals_proper.value, str):
+            qual_strings.append(quals_proper.value)
+        elif isinstance(quals_proper, UnionType):
+            for item in quals_proper.items:
+                item_proper = get_proper_type(item)
+                if isinstance(item_proper, LiteralType) and isinstance(item_proper.value, str):
+                    qual_strings.append(item_proper.value)
+
+        for qual in qual_strings:
+            if qual == "NotRequired":
+                is_required = False
+            elif qual == "Required":
+                is_required = True
+            elif qual == "ReadOnly":
+                is_readonly = True
+
+        items[name] = item_type
+        if is_required:
+            required_keys.add(name)
+        if is_readonly:
+            readonly_keys.add(name)
+
+    # Get the TypedDict fallback
+    fallback = evaluator.api.named_type_or_none("typing._TypedDict")
+    if fallback is None:
+        # Fallback to Mapping[str, object] if _TypedDict not available
+        fallback = evaluator.api.named_type("builtins.dict")
+
+    return TypedDictType(
+        items=items,
+        required_keys=required_keys,
+        readonly_keys=readonly_keys,
+        fallback=fallback,
+    )
+
+
 # --- Phase 3B: Utility Operators ---
 
 

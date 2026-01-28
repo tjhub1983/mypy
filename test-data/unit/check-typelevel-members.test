@@ -235,3 +235,35 @@ reveal_type(m)  # N: Revealed type is "tuple[typing.Member[Literal['name'], buil
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
+
+[case testTypeOperatorNewTypedDict]
+from typing import NewTypedDict, Member, Literal
+
+# Create a TypedDict from Member types
+TD = NewTypedDict[
+    Member[Literal['name'], str, Literal['Required'], int, int],
+    Member[Literal['age'], int, Literal['Required'], int, int],
+]
+
+x: TD
+reveal_type(x)  # N: Revealed type is "TypedDict({'name': builtins.str, 'age': builtins.int})"
+x = {'name': 'Alice', 'age': 30}
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testTypeOperatorNewTypedDictNotRequired]
+from typing import NewTypedDict, Member, Literal
+
+# Create a TypedDict with NotRequired field
+TD = NewTypedDict[
+    Member[Literal['name'], str, Literal['Required'], int, int],
+    Member[Literal['nickname'], str, Literal['NotRequired'], int, int],
+]
+
+x: TD
+reveal_type(x)  # N: Revealed type is "TypedDict({'name': builtins.str, 'nickname'?: builtins.str})"
+x = {'name': 'Alice'}  # nickname is optional
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]

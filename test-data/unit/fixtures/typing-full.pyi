@@ -282,6 +282,11 @@ class Members(Generic[T]): ...
 @_type_operator
 class Attrs(Generic[T]): ...
 
+_Ts = TypeVarTuple("_Ts")
+
+@_type_operator
+class NewTypedDict(Generic[Unpack[_Ts]]): ...
+
 # Member data type for type-level computation
 _Name = TypeVar('_Name')
 _Type = TypeVar('_Type')
