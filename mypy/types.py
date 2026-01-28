@@ -497,10 +497,15 @@ class ComputedType(ProperType):
         """Evaluate this computed type to produce a concrete type.
 
         Returns self if evaluation is not yet possible (e.g., contains unresolved type vars).
+        XXX: That is not true (we return EXPANSION_ANY) but probably
+        should be.
 
         Subclasses must implement this method.
+
         """
-        raise NotImplementedError
+        from mypy.typelevel import evaluate_computed_type
+
+        return evaluate_computed_type(self)
 
 
 class TypeOperatorType(ComputedType):
@@ -539,12 +544,6 @@ class TypeOperatorType(ComputedType):
     @property
     def name(self) -> str:
         return self.fullname.split(".")[-1]
-
-    def expand(self) -> Type:
-        """Evaluate this type operator to produce a concrete type."""
-        from mypy.typelevel import evaluate_type_operator
-
-        return evaluate_type_operator(self)
 
     def __hash__(self) -> int:
         return hash((self.fullname, tuple(self.args)))
@@ -637,12 +636,6 @@ class TypeForComprehension(ComputedType):
 
     def accept(self, visitor: TypeVisitor[T]) -> T:
         return visitor.visit_type_for_comprehension(self)
-
-    def expand(self) -> Type:
-        """Evaluate the comprehension to produce a tuple type."""
-        from mypy.typelevel import evaluate_comprehension
-
-        return evaluate_comprehension(self)
 
     def __hash__(self) -> int:
         return hash((self.element_expr, self.iter_name, self.iter_type, tuple(self.conditions)))

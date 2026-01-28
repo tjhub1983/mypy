@@ -20,6 +20,7 @@ from mypy.nodes import FuncDef, Var
 from mypy.subtypes import is_subtype
 from mypy.types import (
     AnyType,
+    ComputedType,
     Instance,
     LiteralType,
     NoneType,
@@ -170,7 +171,7 @@ class TypeLevelEvaluator:
         if isinstance(typ, TypeOperatorType):
             return self.eval_operator(typ)
         if isinstance(typ, TypeForComprehension):
-            return typ.expand()
+            return evaluate_comprehension(self, typ)
         return typ  # Already a concrete type or can't be evaluated
 
     def eval_proper(self, typ: Type) -> ProperType:
@@ -773,6 +774,46 @@ def _eval_length(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     return UninhabitedType()
 
 
+def evaluate_comprehension(evaluator: TypeLevelEvaluator, typ: TypeForComprehension) -> Type:
+    """Evaluate a TypeForComprehension.
+
+    Evaluates *[Expr for var in Iter if Cond] to UnpackType(TupleType([...])).
+    """
+
+    # Get the iterable type and expand it to a TupleType
+    iter_proper = evaluator.eval_proper(typ.iter_type)
+
+    if not isinstance(iter_proper, TupleType):
+        # Can only iterate over tuple types
+        return UninhabitedType()
+
+    # Process each item in the tuple
+    result_items: list[Type] = []
+    assert typ.iter_var
+    for item in iter_proper.items:
+        # Substitute iter_var with item in element_expr and conditions
+        env = {typ.iter_var.id: item}
+        substituted_expr = expand_type(typ.element_expr, env)
+        substituted_conditions = [expand_type(cond, env) for cond in typ.conditions]
+
+        # Evaluate all conditions
+        all_pass = True
+        for cond in substituted_conditions:
+            cond_result = extract_literal_bool(evaluator.evaluate(cond))
+            if cond_result is False:
+                all_pass = False
+                break
+            elif cond_result is None:
+                # Undecidable condition - raise Stuck
+                raise EvaluationStuck
+
+        if all_pass:
+            # Include this element in the result
+            result_items.append(substituted_expr)
+
+    return UnpackType(evaluator.tuple_type(result_items))
+
+
 # --- Helper Functions ---
 
 
@@ -793,8 +834,8 @@ def get_type_args_for_base(instance: Instance, base_type: TypeInfo) -> tuple[Typ
 # --- Public API ---
 
 
-def evaluate_type_operator(typ: TypeOperatorType) -> Type:
-    """Evaluate a TypeOperatorType. Called from TypeOperatorType.expand().
+def evaluate_computed_type(typ: ComputedType) -> Type:
+    """Evaluate a ComputedType. Called from ComputedType.expand().
 
     Uses typelevel_ctx.api to access the semantic analyzer.
     """
@@ -803,61 +844,8 @@ def evaluate_type_operator(typ: TypeOperatorType) -> Type:
 
     evaluator = TypeLevelEvaluator(typelevel_ctx.api)
     try:
-        res = evaluator.eval_operator(typ)
+        res = evaluator.evaluate(typ)
     except EvaluationStuck:
         res = EXPANSION_ANY
     # print("EVALED!!", res)
     return res
-
-
-def evaluate_comprehension(typ: TypeForComprehension) -> Type:
-    """Evaluate a TypeForComprehension. Called from TypeForComprehension.expand().
-
-    Evaluates *[Expr for var in Iter if Cond] to UnpackType(TupleType([...])).
-    """
-    if typelevel_ctx.api is None:
-        # API not available yet - return stuck expansion marker
-        return EXPANSION_ANY
-
-    evaluator = TypeLevelEvaluator(typelevel_ctx.api)
-
-    try:
-        # Get the iterable type and expand it to a TupleType
-        iter_proper = evaluator.eval_proper(typ.iter_type)
-    except EvaluationStuck:
-        return EXPANSION_ANY
-
-    if not isinstance(iter_proper, TupleType):
-        # Can only iterate over tuple types
-        return UninhabitedType()
-
-    # Process each item in the tuple
-    result_items: list[Type] = []
-    assert typ.iter_var
-    for item in iter_proper.items:
-        # Substitute iter_var with item in element_expr and conditions
-        env = {typ.iter_var.id: item}
-        substituted_expr = expand_type(typ.element_expr, env)
-        substituted_conditions = [expand_type(cond, env) for cond in typ.conditions]
-
-        # Evaluate all conditions
-        try:
-            all_pass = True
-            for cond in substituted_conditions:
-                cond_result = extract_literal_bool(evaluator.evaluate(cond))
-                if cond_result is False:
-                    all_pass = False
-                    break
-                elif cond_result is None:
-                    # Undecidable condition - skip this item
-                    all_pass = False
-                    break
-
-            if all_pass:
-                # Include this element in the result
-                result_items.append(substituted_expr)
-        except EvaluationStuck:
-            # Skip items that cause stuck evaluation
-            continue
-
-    return UnpackType(evaluator.tuple_type(result_items))
