@@ -10,7 +10,7 @@ Note: Conditional types are now represented as _Cond[...] TypeOperatorType.
 from __future__ import annotations
 
 import itertools
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Final
 
@@ -364,6 +364,25 @@ def extract_literal_string(typ: Type) -> str | None:
     return None
 
 
+def _get_args(evaluator: TypeLevelEvaluator, target: Type, base: Type) -> Sequence[Type] | None:
+    target = evaluator.eval_proper(target)
+    base = evaluator.eval_proper(base)
+
+    # TODO: Other cases
+    if isinstance(target, Instance) and isinstance(base, Instance):
+        return get_type_args_for_base(target, base.type)
+
+    if (
+        isinstance(target, TupleType)
+        and isinstance(base, Instance)
+        # XXX: Do a real check
+        and target.partial_fallback == base
+    ):
+        return target.items
+
+    return None
+
+
 @register_operator("GetArg")
 @lift_over_unions
 def _eval_get_arg(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
@@ -371,20 +390,20 @@ def _eval_get_arg(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     if len(typ.args) != 3:
         return UninhabitedType()
 
-    target = evaluator.eval_proper(typ.args[0])
-    base = evaluator.eval_proper(typ.args[1])
-    idx_type = evaluator.eval_proper(typ.args[2])
+    args = _get_args(evaluator, typ.args[0], typ.args[1])
+
+    if args is None:
+        return UninhabitedType()
 
     # Extract index as int
-    index = extract_literal_int(idx_type)
+    index = extract_literal_int(evaluator.eval_proper(typ.args[2]))
     if index is None:
         return UninhabitedType()  # Can't evaluate without literal index
 
-    if isinstance(target, Instance) and isinstance(base, Instance):
-        args = get_type_args_for_base(target, base.type)
-        if args is not None and 0 <= index < len(args):
-            return args[index]
-        return UninhabitedType()  # Never - invalid index or not a subtype
+    if index < 0:
+        index += len(args)
+    if 0 <= index < len(args):
+        return args[index]
 
     return UninhabitedType()
 
@@ -396,16 +415,11 @@ def _eval_get_args(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type
     if len(typ.args) != 2:
         return UninhabitedType()
 
-    target = evaluator.eval_proper(typ.args[0])
-    base = evaluator.eval_proper(typ.args[1])
+    args = _get_args(evaluator, typ.args[0], typ.args[1])
 
-    if isinstance(target, Instance) and isinstance(base, Instance):
-        args = get_type_args_for_base(target, base.type)
-        if args is not None:
-            return evaluator.tuple_type(list(args))
+    if args is None:
         return UninhabitedType()
-
-    return UninhabitedType()
+    return evaluator.tuple_type(list(args))
 
 
 @register_operator("FromUnion")
