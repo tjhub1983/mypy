@@ -537,6 +537,9 @@ def f(x: tuple[*[T for T in Iter[tuple[int, str, float]]]]) -> None:
 
 reveal_type(f)  # N: Revealed type is "def (x: tuple[builtins.int, builtins.str, builtins.float])"
 
+z: tuple[*[T for T in Iter[tuple[()]]]]
+reveal_type(z)  # N: Revealed type is "tuple[()]"
+
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
 

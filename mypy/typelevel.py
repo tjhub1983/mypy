@@ -263,9 +263,6 @@ def _eval_iter(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
 
     target = evaluator.eval_proper(typ.args[0])
     if isinstance(target, TupleType):
-        # Check for unbounded tuple (has ..., represented by partial_fallback)
-        if target.partial_fallback and not target.items:
-            return UninhabitedType()
         return target
     else:
         return UninhabitedType()
