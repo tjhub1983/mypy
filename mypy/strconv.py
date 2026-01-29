@@ -41,7 +41,9 @@ class StrConv(NodeVisitor[str]):
     def stringify_type(self, t: mypy.types.Type) -> str:
         import mypy.types
 
-        return t.accept(mypy.types.TypeStrVisitor(id_mapper=self.id_mapper, options=self.options))
+        return t.accept(
+            mypy.types.TypeStrVisitor(id_mapper=self.id_mapper, options=self.options, expand=True)
+        )
 
     def get_id(self, o: object) -> int | None:
         if self.id_mapper:
@@ -691,7 +693,12 @@ def dump_tagged(nodes: Sequence[object], tag: str | None, str_conv: StrConv) -> 
             a.append(indent(n.accept(str_conv), 2))
         elif isinstance(n, Type):
             a.append(
-                indent(n.accept(TypeStrVisitor(str_conv.id_mapper, options=str_conv.options)), 2)
+                indent(
+                    n.accept(
+                        TypeStrVisitor(str_conv.id_mapper, options=str_conv.options, expand=True)
+                    ),
+                    2,
+                )
             )
         elif n is not None:
             a.append(indent(str(n), 2))

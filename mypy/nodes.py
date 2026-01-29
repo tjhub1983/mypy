@@ -4075,7 +4075,7 @@ class TypeInfo(SymbolNode):
         options = Options()
         return self.dump(
             str_conv=mypy.strconv.StrConv(options=options),
-            type_str_conv=mypy.types.TypeStrVisitor(options=options),
+            type_str_conv=mypy.types.TypeStrVisitor(options=options, expand=True),
         )
 
     def dump(
@@ -4836,7 +4836,7 @@ class SymbolTableNode:
             s += f" ({self.node.fullname})"
         # Include declared type of variables and functions.
         if self.type is not None:
-            s += f" : {self.type}"
+            s += f" : {self.type.str_with_options(expand=True)}"
         if self.cross_ref:
             s += f" cross_ref:{self.cross_ref}"
         return s

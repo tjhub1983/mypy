@@ -307,8 +307,8 @@ class Type(mypy.nodes.Context):
     def __repr__(self) -> str:
         return self.accept(TypeStrVisitor(options=Options()))
 
-    def str_with_options(self, options: Options) -> str:
-        return self.accept(TypeStrVisitor(options=options))
+    def str_with_options(self, options: Options | None = None, expand: bool = False) -> str:
+        return self.accept(TypeStrVisitor(options=options or Options(), expand=expand))
 
     def serialize(self) -> JsonDict | str:
         raise NotImplementedError(f"Cannot serialize {self.__class__.__name__} instance")
@@ -4342,16 +4342,23 @@ class TypeStrVisitor(SyntheticTypeVisitor[str]):
     def visit_type_alias_type(self, t: TypeAliasType, /) -> str:
         if t.alias is None:
             return "<alias (unfixed)>"
-        if not t.is_recursive:
-            return get_proper_type(t).accept(self)
-        if self.dotted_aliases is None:
-            self.dotted_aliases = set()
-        elif t in self.dotted_aliases:
-            return "..."
-        self.dotted_aliases.add(t)
-        type_str = get_proper_type(t).accept(self)
-        self.dotted_aliases.discard(t)
-        return type_str
+
+        if self.expand:
+            if not t.is_recursive:
+                return get_proper_type(t).accept(self)
+            if self.dotted_aliases is None:
+                self.dotted_aliases = set()
+            elif t in self.dotted_aliases:
+                return "..."
+            self.dotted_aliases.add(t)
+            type_str = get_proper_type(t).accept(self)
+            self.dotted_aliases.discard(t)
+            return type_str
+        else:
+            s = t.alias.fullname
+            if t.args:
+                s += f"[{self.list_str(t.args)}]"
+            return s
 
     def visit_unpack_type(self, t: UnpackType, /) -> str:
         if not self.options.reveal_verbose_types:
@@ -4381,7 +4388,7 @@ class TypeStrVisitor(SyntheticTypeVisitor[str]):
         res = []
         for t in a:
             s = t.accept(self)
-            if use_or_syntax and isinstance(get_proper_type(t), CallableType):
+            if use_or_syntax and isinstance(get_proper_type_simple(t), CallableType):
                 res.append(f"({s})")
             else:
                 res.append(s)
