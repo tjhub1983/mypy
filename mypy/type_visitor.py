@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from collections.abc import Iterable, Sequence
-from typing import Any, Final, Generic, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Final, Generic, TypeVar, cast
 
 from mypy_extensions import mypyc_attr, trait
 
@@ -52,6 +52,10 @@ from mypy.types import (
     UnpackType,
     get_proper_type,
 )
+
+if TYPE_CHECKING:
+    from mypy.nodes import TypeAlias
+
 
 T = TypeVar("T", covariant=True)
 
@@ -378,7 +382,7 @@ class TypeQuery(SyntheticTypeVisitor[T]):
     def __init__(self) -> None:
         # Keep track of the type aliases already visited. This is needed to avoid
         # infinite recursion on types like A = Union[int, List[A]].
-        self.seen_aliases: set[TypeAliasType] | None = None
+        self.seen_aliases: set[TypeAlias] | None = None
         # By default, we eagerly expand type aliases, and query also types in the
         # alias target. In most cases this is a desired behavior, but we may want
         # to skip targets in some cases (e.g. when collecting type variables).
@@ -471,9 +475,10 @@ class TypeQuery(SyntheticTypeVisitor[T]):
         # (also use this as a simple-minded cache).
         if self.seen_aliases is None:
             self.seen_aliases = set()
-        elif t in self.seen_aliases:
+        elif t.alias in self.seen_aliases:
             return self.strategy([])
-        self.seen_aliases.add(t)
+        if t.alias:
+            self.seen_aliases.add(t.alias)
         return get_proper_type(t).accept(self)
 
     def visit_type_operator_type(self, t: TypeOperatorType, /) -> T:
@@ -516,7 +521,7 @@ class BoolTypeQuery(SyntheticTypeVisitor[bool]):
         # Keep track of the type aliases already visited. This is needed to avoid
         # infinite recursion on types like A = Union[int, List[A]]. An empty set is
         # represented as None as a micro-optimization.
-        self.seen_aliases: set[TypeAliasType] | None = None
+        self.seen_aliases: set[TypeAlias] | None = None
         # By default, we eagerly expand type aliases, and query also types in the
         # alias target. In most cases this is a desired behavior, but we may want
         # to skip targets in some cases (e.g. when collecting type variables).
@@ -618,9 +623,10 @@ class BoolTypeQuery(SyntheticTypeVisitor[bool]):
         # (also use this as a simple-minded cache).
         if self.seen_aliases is None:
             self.seen_aliases = set()
-        elif t in self.seen_aliases:
+        elif t.alias in self.seen_aliases:
             return self.default
-        self.seen_aliases.add(t)
+        if t.alias:
+            self.seen_aliases.add(t.alias)
         return get_proper_type(t).accept(self)
 
     def visit_type_operator_type(self, t: TypeOperatorType, /) -> bool:

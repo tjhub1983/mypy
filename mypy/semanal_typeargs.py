@@ -15,7 +15,7 @@ from mypy.errors import Errors
 from mypy.message_registry import INVALID_PARAM_SPEC_LOCATION, INVALID_PARAM_SPEC_LOCATION_NOTE
 from mypy.messages import format_type
 from mypy.mixedtraverser import MixedTraverserVisitor
-from mypy.nodes import Block, ClassDef, Context, FakeInfo, FuncItem, MypyFile
+from mypy.nodes import Block, ClassDef, Context, FakeInfo, FuncItem, MypyFile, TypeAlias
 from mypy.options import Options
 from mypy.scope import Scope
 from mypy.subtypes import is_same_type, is_subtype
@@ -61,7 +61,7 @@ class TypeArgumentAnalyzer(MixedTraverserVisitor):
         self.recurse_into_functions = True
         # Keep track of the type aliases already visited. This is needed to avoid
         # infinite recursion on types like A = Union[int, List[A]].
-        self.seen_aliases: set[TypeAliasType] = set()
+        self.seen_aliases: set[TypeAlias] = set()
 
     def visit_mypy_file(self, o: MypyFile) -> None:
         self.errors.set_file(o.path, o.fullname, scope=self.scope, options=self.options)
@@ -84,12 +84,12 @@ class TypeArgumentAnalyzer(MixedTraverserVisitor):
 
     def visit_type_alias_type(self, t: TypeAliasType) -> None:
         super().visit_type_alias_type(t)
+        assert t.alias is not None, f"Unfixed type alias {t.type_ref}"
         if t.is_recursive:
-            if t in self.seen_aliases:
+            if t.alias in self.seen_aliases:
                 # Avoid infinite recursion on recursive type aliases.
                 return
-            self.seen_aliases.add(t)
-        assert t.alias is not None, f"Unfixed type alias {t.type_ref}"
+            self.seen_aliases.add(t.alias)
         is_error, is_invalid = self.validate_args(
             t.alias.name, tuple(t.args), t.alias.alias_tvars, t
         )
@@ -106,7 +106,7 @@ class TypeArgumentAnalyzer(MixedTraverserVisitor):
                 # to verify the arguments satisfy the upper bounds of the expansion as well.
                 get_proper_type(t).accept(self)
         if t.is_recursive:
-            self.seen_aliases.discard(t)
+            self.seen_aliases.discard(t.alias)
 
     def visit_tuple_type(self, t: TupleType) -> None:
         t.items = flatten_nested_tuples(t.items)
