@@ -493,7 +493,7 @@ class ComputedType(ProperType):
 
     __slots__ = ()
 
-    def expand(self) -> Type:
+    def expand(self, ctx: mypy.nodes.Context | None = None) -> Type:
         """Evaluate this computed type to produce a concrete type.
 
         Returns self if evaluation is not yet possible (e.g., contains unresolved type vars).
@@ -505,7 +505,7 @@ class ComputedType(ProperType):
         """
         from mypy.typelevel import evaluate_computed_type
 
-        return evaluate_computed_type(self)
+        return evaluate_computed_type(self, ctx)
 
 
 class TypeOperatorType(ComputedType):
@@ -3949,6 +3949,7 @@ def get_proper_type(typ: Type | None) -> ProperType | None:
 
     This also *attempts* to expand computed types, though it might fail.
     """
+    ctx = typ
     if typ is None:
         return None
     # TODO: this is an ugly hack, remove.
@@ -3960,7 +3961,7 @@ def get_proper_type(typ: Type | None) -> ProperType | None:
             typ = typ._expand_once()
         elif isinstance(typ, ComputedType):
             # Handles TypeOperatorType, TypeForComprehension
-            if not is_stuck_expansion(ntyp := typ.expand()):
+            if not is_stuck_expansion(ntyp := typ.expand(ctx)):
                 typ = ntyp
             else:
                 break

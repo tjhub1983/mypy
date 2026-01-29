@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Final
 
 from mypy.expandtype import expand_type, expand_type_by_instance
 from mypy.maptype import map_instance_to_supertype
-from mypy.nodes import FuncDef, Var
+from mypy.nodes import Context, FuncDef, Var
 from mypy.subtypes import is_subtype
 from mypy.types import (
     AnyType,
@@ -157,8 +157,9 @@ class EvaluationStuck(Exception):
 class TypeLevelEvaluator:
     """Evaluates type-level computations to concrete types."""
 
-    def __init__(self, api: SemanticAnalyzerInterface) -> None:
+    def __init__(self, api: SemanticAnalyzerInterface, ctx: Context | None) -> None:
         self.api = api
+        self.ctx = ctx
 
     def evaluate(self, typ: Type) -> Type:
         """Main entry point: evaluate a type to its simplified form."""
@@ -830,9 +831,11 @@ def _eval_raise_error(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> T
     if args[1:]:
         msg += ": " + ", ".join(str(t) for t in args[1:])
 
+    # TODO: We could also print a stack trace?
+    ctx = evaluator.ctx or typ
     # Use serious=True to bypass in_checked_function() check which requires
     # self.options to be set on the SemanticAnalyzer
-    evaluator.api.fail(msg, typ, serious=True)
+    evaluator.api.fail(msg, ctx, serious=True)
 
     return UninhabitedType()
 
@@ -897,15 +900,19 @@ def get_type_args_for_base(instance: Instance, base_type: TypeInfo) -> tuple[Typ
 # --- Public API ---
 
 
-def evaluate_computed_type(typ: ComputedType) -> Type:
+def evaluate_computed_type(typ: ComputedType, ctx: Context | None = None) -> Type:
     """Evaluate a ComputedType. Called from ComputedType.expand().
 
     Uses typelevel_ctx.api to access the semantic analyzer.
+
+    The ctx argument indicates where an error message from RaiseError
+    ought to be placed.  TODO: Make it a stack of contexts maybe?
+
     """
     if typelevel_ctx.api is None:
         raise AssertionError("No access to semantic analyzer!")
 
-    evaluator = TypeLevelEvaluator(typelevel_ctx.api)
+    evaluator = TypeLevelEvaluator(typelevel_ctx.api, ctx)
     try:
         res = evaluator.evaluate(typ)
     except EvaluationStuck:

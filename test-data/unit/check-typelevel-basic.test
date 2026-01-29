@@ -690,6 +690,8 @@ reveal_type(x)  # N: Revealed type is "tuple[Literal['x'], Literal['y']]"
 [typing fixtures/typing-full.pyi]
 
 [case testTypeOperatorRaiseError]
+# flags: --python-version 3.14
+
 from typing import RaiseError, Literal
 
 x: RaiseError[Literal['custom error message']]  # E: custom error message
@@ -697,6 +699,9 @@ reveal_type(x)  # N: Revealed type is "Never"
 
 y: RaiseError[Literal['custom error message'], str]  # E: custom error message: str
 
+type Alias[T] = RaiseError[Literal['wrong'], T]
+
+z: Alias[bool]  # E: wrong: bool
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
