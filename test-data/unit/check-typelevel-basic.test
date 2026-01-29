@@ -326,13 +326,25 @@ reveal_type(x4)  # N: Revealed type is "tuple[builtins.str, builtins.float]"
 
 [case testTypeOperatorLength]
 # Test Length operator
-from typing import Length, Literal, Tuple
+from typing import Length, Literal, Iter, Tuple
 
 x: Length[tuple[int, str, float]]
 reveal_type(x)  # N: Revealed type is "Literal[3]"
 
 y: Length[tuple[int]]
 reveal_type(y)  # N: Revealed type is "Literal[1]"
+
+z: Length[tuple[()]]
+reveal_type(z)  # N: Revealed type is "Literal[0]"
+
+w: Length[tuple[int, ...]]
+reveal_type(w)  # N: Revealed type is "None"
+
+a: Length[tuple[*[x for x in Iter[tuple[int, str, bool]]]]]
+reveal_type(a)  # N: Revealed type is "Literal[3]"
+
+b: Length[tuple[str, *tuple[int, ...]]]
+reveal_type(b)  # N: Revealed type is "None"
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]

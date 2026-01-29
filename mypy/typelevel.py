@@ -805,10 +805,14 @@ def _eval_length(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     target = evaluator.eval_proper(typ.args[0])
 
     if isinstance(target, TupleType):
-        # Check for unbounded tuple (has ..., represented by partial_fallback)
-        if target.partial_fallback and not target.items:
-            return NoneType()  # Unbounded tuple returns None
+        # If there is an Unpack, it must be of an unbounded tuple, or
+        # it would have been substituted out.
+        # TODO: Or would it be stuck? Think.
+        if any(isinstance(st, UnpackType) for st in target.items):
+            return NoneType()
         return evaluator.literal_int(len(target.items))
+    if isinstance(target, Instance) and target.type.has_base("builtins.tuple"):
+        return NoneType()
 
     return UninhabitedType()
 
