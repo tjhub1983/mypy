@@ -55,6 +55,12 @@ class TypeLevelContext:
 
     def __init__(self) -> None:
         self._api: SemanticAnalyzerInterface | None = None
+        # Make an evaluator part of this state also, so that we can
+        # maintain a depth tracker and an outer error message context.
+        #
+        # XXX: but maybe we should always thread the evaluator back
+        # ourselves or something instead?
+        self._evaluator: TypeLevelEvaluator | None = None
 
     @property
     def api(self) -> SemanticAnalyzerInterface | None:
@@ -930,10 +936,15 @@ def evaluate_computed_type(typ: ComputedType, ctx: Context | None = None) -> Typ
     if typelevel_ctx.api is None:
         raise AssertionError("No access to semantic analyzer!")
 
-    evaluator = TypeLevelEvaluator(typelevel_ctx.api, ctx)
+    old_evaluator = typelevel_ctx._evaluator
+    if not typelevel_ctx._evaluator:
+        typelevel_ctx._evaluator = TypeLevelEvaluator(typelevel_ctx.api, ctx)
     try:
-        res = evaluator.evaluate(typ)
+        res = typelevel_ctx._evaluator.evaluate(typ)
     except EvaluationStuck:
         res = EXPANSION_ANY
+    finally:
+        typelevel_ctx._evaluator = old_evaluator
+
     # print("EVALED!!", res)
     return res
