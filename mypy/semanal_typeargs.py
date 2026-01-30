@@ -101,7 +101,10 @@ class TypeArgumentAnalyzer(MixedTraverserVisitor):
         if not is_error:
             # If there was already an error for the alias itself, there is no point in checking
             # the expansion, most likely it will result in the same kind of error.
+
             if t.args:
+                # XXX: I was trying this at one point but it might not be needed.
+                # if t.args and not any(isinstance(st, ComputedType) for st in t.args):
                 # Since we always allow unbounded type variables in alias definitions, we need
                 # to verify the arguments satisfy the upper bounds of the expansion as well.
                 get_proper_type(t).accept(self)

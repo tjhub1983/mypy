@@ -27,11 +27,13 @@ from mypy.types import (
     ProperType,
     TupleType,
     Type,
+    TypeAliasType,
     TypedDictType,
     TypeForComprehension,
     TypeOfAny,
     TypeOperatorType,
     TypeVarType,
+    UnboundType,
     UninhabitedType,
     UnionType,
     UnpackType,
@@ -43,6 +45,9 @@ from mypy.types import (
 if TYPE_CHECKING:
     from mypy.nodes import TypeInfo
     from mypy.semanal_shared import SemanticAnalyzerInterface
+
+
+MAX_DEPTH = 100
 
 
 class TypeLevelContext:
@@ -93,6 +98,8 @@ _OPERATOR_EVALUATORS: dict[str, Callable[[TypeLevelEvaluator, TypeOperatorType],
 
 
 EXPANSION_ANY = AnyType(TypeOfAny.expansion_stuck)
+
+EXPANSION_OVERFLOW = AnyType(TypeOfAny.from_error)
 
 
 def register_operator(
@@ -160,20 +167,40 @@ class EvaluationStuck(Exception):
     pass
 
 
+class EvaluationOverflow(Exception):
+    pass
+
+
 class TypeLevelEvaluator:
     """Evaluates type-level computations to concrete types."""
 
     def __init__(self, api: SemanticAnalyzerInterface, ctx: Context | None) -> None:
         self.api = api
         self.ctx = ctx
+        self.depth = 0
 
     def evaluate(self, typ: Type) -> Type:
         """Main entry point: evaluate a type to its simplified form."""
-        if isinstance(typ, TypeOperatorType):
-            return self.eval_operator(typ)
-        if isinstance(typ, TypeForComprehension):
-            return evaluate_comprehension(self, typ)
-        return typ  # Already a concrete type or can't be evaluated
+
+        if self.depth >= MAX_DEPTH:
+            ctx = self.ctx or typ
+            # Use serious=True to bypass in_checked_function() check which requires
+            # self.options to be set on the SemanticAnalyzer
+            self.api.fail("Type expansion is too deep; producing Any", ctx, serious=True)
+            raise EvaluationOverflow()
+
+        try:
+            self.depth += 1
+            if isinstance(typ, TypeOperatorType):
+                rtyp = self.eval_operator(typ)
+            elif isinstance(typ, TypeForComprehension):
+                rtyp = evaluate_comprehension(self, typ)
+            else:
+                rtyp = typ  # Already a concrete type or can't be evaluated
+
+            return rtyp
+        finally:
+            self.depth -= 1
 
     def eval_proper(self, typ: Type) -> ProperType:
         """Main entry point: evaluate a type to its simplified form."""
@@ -181,7 +208,7 @@ class TypeLevelEvaluator:
         # A call to another expansion via an alias got stuck, reraise here
         if is_stuck_expansion(typ):
             raise EvaluationStuck
-        if isinstance(typ, TypeVarType):
+        if isinstance(typ, (TypeVarType, UnboundType, ComputedType)):
             raise EvaluationStuck
 
         return typ
@@ -215,7 +242,7 @@ class TypeLevelEvaluator:
         """
         flat_args: list[Type] = []
         for arg in args:
-            evaluated = self.evaluate(arg)
+            evaluated = self.eval_proper(arg)
             if isinstance(evaluated, UnpackType):
                 inner = get_proper_type(evaluated.type)
                 if isinstance(inner, TupleType):
@@ -235,6 +262,32 @@ class TypeLevelEvaluator:
         return TupleType(items, self.api.named_type("builtins.tuple"))
 
 
+def _call_by_value(evaluator: TypeLevelEvaluator, typ: Type) -> Type:
+    """Make sure alias arguments are evaluated before expansion.
+
+    Currently this is used in conditional bodies, which should protect
+    any recursive uses, to make sure that arguments to potentially
+    recursive aliases get evaluated before substituted in, to make
+    sure that they don't grow without bound.
+
+    FIXME: I am not sure this is sufficient to do just where we are doing it.
+    It is probably not. We may need to universally do this when there are
+    potentially computed arguments?
+
+    XXX: Actually maybe this isn't needed at all??
+    I'm leaving the code in here for now in case I want to recover it easily.
+    """
+    ACTUALLY_DO_IT = False
+
+    if ACTUALLY_DO_IT and isinstance(typ, TypeAliasType):
+        typ = typ.copy_modified(
+            args=[get_proper_type(_call_by_value(evaluator, st)) for st in typ.args]
+        )
+
+    # Evaluate recursively instead of letting it get handled in the
+    # get_proper_type loop to help maintain better error contexts.
+    return evaluator.eval_proper(typ)
+
 @register_operator("_Cond")
 def _eval_cond(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     """Evaluate _Cond[condition, TrueType, FalseType]."""
@@ -243,12 +296,12 @@ def _eval_cond(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
         return UninhabitedType()
 
     condition, true_type, false_type = typ.args
-    result = extract_literal_bool(evaluator.evaluate(condition))
+    result = extract_literal_bool(evaluator.eval_proper(condition))
 
     if result is True:
-        return true_type
+        return _call_by_value(evaluator, true_type)
     elif result is False:
-        return false_type
+        return _call_by_value(evaluator, false_type)
     else:
         # Undecidable - return Any for now
         # In the future, we might want to keep the conditional and defer evaluation
@@ -938,7 +991,13 @@ def evaluate_computed_type(typ: ComputedType, ctx: Context | None = None) -> Typ
         typelevel_ctx._evaluator = TypeLevelEvaluator(typelevel_ctx.api, ctx)
     try:
         res = typelevel_ctx._evaluator.evaluate(typ)
+    except EvaluationOverflow:
+        # If this is not the top level of type evaluation, re-raise.
+        if old_evaluator is not None:
+            raise
+        res = EXPANSION_OVERFLOW
     except EvaluationStuck:
+        # TODO: Should we do the same top level thing as above?
         res = EXPANSION_ANY
     finally:
         typelevel_ctx._evaluator = old_evaluator

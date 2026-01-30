@@ -115,6 +115,7 @@ from mypy.types import (
     find_unpack_in_list,
     flatten_nested_tuples,
     get_proper_type,
+    get_proper_type_simple,
     has_type_vars,
 )
 from mypy.types_utils import get_bad_type_type_item
@@ -2451,9 +2452,13 @@ class DivergingAliasDetector(TrivialSyntheticTypeTranslator):
             return t
         new_nodes = self.seen_nodes | {t.alias}
         visitor = DivergingAliasDetector(new_nodes, self.lookup, self.scope)
-        _ = get_proper_type(t).accept(visitor)
+        _ = get_proper_type_simple(t).accept(visitor)
         if visitor.diverging:
             self.diverging = True
+        return t
+
+    def visit_type_operator_type(self, t: TypeOperatorType) -> Type:
+        # XXX: I'm really not sure what to do here
         return t
 
 

@@ -200,3 +200,118 @@ reveal_type(select_ex(User, args1))  # N: Revealed type is "builtins.list[TypedD
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
+
+
+[case testTypeLevel_nplike]
+# flags: --python-version 3.14
+
+# Simulate array broadcasting
+
+from typing import Literal as L
+
+from typing import (
+    Literal,
+    Never,
+    GetArg,
+    Bool,
+    Matches,
+    Iter,
+    Slice,
+    Length,
+    IsSub,
+    RaiseError,
+)
+
+
+class Array2[DType, Shape]:
+
+    def __abs__(self) -> Array2[DType, Shape]:
+        raise BaseException
+
+    def __add__[Shape2](
+        self,
+        other: Array2[DType, Shape2]
+    ) -> Array2[DType, Merge[Shape, Shape2]]:
+        raise BaseException
+
+
+def add2[DType, Shape1, Shape2](
+    lhs: Array2[DType, Shape1],
+    rhs: Array2[DType, Shape2],
+) -> Array2[DType, Merge[Shape1, Shape2]]:
+    raise BaseException
+
+
+type AppendTuple[A, B] = tuple[
+    *[x for x in Iter[A]],
+    B,
+]
+
+# asdf, not implemented yet
+type And[T, S] = S if Bool[T] else T
+type Or[T, S] = T if Bool[T] else S
+
+type MergeOne[T, S] = (
+    T
+    # if Matches[T, S] or Matches[S, Literal[1]]
+    if Bool[Or[Matches[T, S], Matches[S, Literal[1]]]]
+    else S if Matches[T, Literal[1]]
+    else RaiseError[Literal["Broadcast mismatch"], T, S]
+)
+
+type Head[T] = GetArg[T, tuple, Literal[0]]
+
+type DropLast[T] = Slice[T, Literal[0], Literal[-1]]
+type Last[T] = GetArg[T, tuple, Literal[-1]]
+
+# Matching on Never here is intentional; it prevents stupid
+# infinite recursions.
+type Empty[T] = IsSub[Length[T], Literal[0]]
+
+type Merge[T, S] = (
+    S if Bool[Empty[T]] else T if Bool[Empty[S]]
+    else
+    AppendTuple[
+        Merge[DropLast[T], DropLast[S]],
+        MergeOne[Last[T], Last[S]]
+    ]
+)
+
+
+a0: MergeOne[L[1], L[5]]
+reveal_type(a0)  # N: Revealed type is "Literal[5]"
+
+a1: MergeOne[int, L[5]]  # E: Broadcast mismatch: builtins.int, Literal[5]
+reveal_type(a1)  # N: Revealed type is "Never"
+
+a2: MergeOne[L[5], L[5]]
+reveal_type(a2)  # N: Revealed type is "Literal[5]"
+
+a3: MergeOne[int, int]
+reveal_type(a3)  # N: Revealed type is "builtins.int"
+
+m0: Merge[tuple[L[1], L[4], L[5]], tuple[L[9], L[1], L[5]]]
+reveal_type(m0)  # N: Revealed type is "tuple[Literal[9], Literal[4], Literal[5]]"
+
+m1: Merge[tuple[L[1], L[4], L[5]], tuple[L[9], L[10], L[5]]]  # E: Broadcast mismatch: Literal[4], Literal[10]
+reveal_type(m1)  # N: Revealed type is "tuple[Literal[9], Never, Literal[5]]"
+
+m2: Merge[tuple[L[2], L[5]], tuple[L[9], L[2], L[1]]]
+reveal_type(m2)  # N: Revealed type is "tuple[Literal[9], Literal[2], Literal[5]]"
+
+type T41 = tuple[L[4], L[1]]
+type T3 = tuple[L[3]]
+
+m3: Merge[T41, T3]
+reveal_type(m3)  # N: Revealed type is "tuple[Literal[4], Literal[3]]"
+
+#
+
+b1: Array2[float, tuple[L[4], L[1]]]
+b2: Array2[float, tuple[L[3]]]
+
+reveal_type(add2(b1, b2))  # N: Revealed type is "__main__.Array2[builtins.float, tuple[Literal[4], Literal[3]]]"
+reveal_type(b1 + b2)  # N: Revealed type is "__main__.Array2[builtins.float, tuple[Literal[4], Literal[3]]]"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]

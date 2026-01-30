@@ -9,7 +9,14 @@ from typing import Final, TypeAlias as _TypeAlias
 
 from mypy.nodes import VARIANCE_NOT_READY, TypeInfo
 from mypy.server.trigger import make_trigger
-from mypy.types import Instance, Type, TypeVarId, TypeVarType, get_proper_type
+from mypy.types import (
+    Instance,
+    Type,
+    TypeVarId,
+    TypeVarType,
+    get_proper_type,
+    get_proper_type_simple,
+)
 
 MAX_NEGATIVE_CACHE_TYPES: Final = 1000
 MAX_NEGATIVE_CACHE_ENTRIES: Final = 10000
@@ -116,7 +123,10 @@ class TypeState:
 
     def is_assumed_subtype(self, left: Type, right: Type) -> bool:
         for l, r in reversed(self._assuming):
-            if get_proper_type(l) == get_proper_type(left) and get_proper_type(
+            # XXX: get_proper_type_simple on assumptions because doing
+            # get_proper_type triggered some infinite
+            # recursions. Think about whether this is right.
+            if get_proper_type_simple(l) == get_proper_type(left) and get_proper_type_simple(
                 r
             ) == get_proper_type(right):
                 return True
@@ -124,9 +134,12 @@ class TypeState:
 
     def is_assumed_proper_subtype(self, left: Type, right: Type) -> bool:
         for l, r in reversed(self._assuming_proper):
-            if get_proper_type(l) == get_proper_type(left) and get_proper_type(
+            # XXX: get_proper_type_simple on assumptions because doing
+            # get_proper_type triggered some infinite
+            # recursions. Think about whether this is right.
+            if get_proper_type_simple(l) == get_proper_type(left) and get_proper_type(
                 r
-            ) == get_proper_type(right):
+            ) == get_proper_type_simple(right):
                 return True
         return False
 
