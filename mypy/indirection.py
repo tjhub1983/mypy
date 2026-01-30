@@ -96,7 +96,7 @@ class TypeIndirectionVisitor(TypeVisitor[None]):
         self._visit(t.default)
 
     def visit_unpack_type(self, t: types.UnpackType) -> None:
-        t.type.accept(self)
+        self._visit(t.type)
 
     def visit_parameters(self, t: types.Parameters) -> None:
         self._visit_type_list(t.arg_types)
