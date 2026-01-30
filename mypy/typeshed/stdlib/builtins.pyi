@@ -2233,15 +2233,42 @@ if sys.version_info >= (3, 13):
     class PythonFinalizationError(RuntimeError): ...
 
 
-_TrueType = TypeVar("_TrueType")
-_FalseType = TypeVar("_FalseType")
-
 @_type_operator
-class _Cond(Generic[_T, _TrueType, _FalseType]):
+class _Cond(Generic[_T, _T1, _T2]):
     """
     Type-level conditional expression.
     _Cond[IsSub[T, Base], TrueType, FalseType] evaluates to TrueType if T is a subtype of Base,
     otherwise FalseType.
+    """
+
+    ...
+
+@_type_operator
+class _And(Generic[_T1, _T2]):
+    """
+    Type-level logical AND.
+    _And[A, B] evaluates to Literal[True] if both A and B are Literal[True],
+    otherwise Literal[False].
+    """
+
+    ...
+
+@_type_operator
+class _Or(Generic[_T1, _T2]):
+    """
+    Type-level logical OR.
+    _Or[A, B] evaluates to Literal[True] if either A or B is Literal[True],
+    otherwise Literal[False].
+    """
+
+    ...
+
+@_type_operator
+class _Not(Generic[_T]):
+    """
+    Type-level logical NOT.
+    _Not[A] evaluates to Literal[True] if A is Literal[False],
+    and Literal[False] if A is Literal[True].
     """
 
     ...

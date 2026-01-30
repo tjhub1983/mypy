@@ -260,14 +260,9 @@ type AppendTuple[A, B] = tuple[
     B,
 ]
 
-# asdf, not implemented yet
-type And[T, S] = S if Bool[T] else T
-type Or[T, S] = T if Bool[T] else S
-
 type MergeOne[T, S] = (
     T
-    # if Matches[T, S] or Matches[S, Literal[1]]
-    if Bool[Or[Matches[T, S], Matches[S, Literal[1]]]]
+    if Matches[T, S] or Matches[S, Literal[1]]
     else S if Matches[T, Literal[1]]
     else RaiseError[Literal["Broadcast mismatch"], T, S]
 )

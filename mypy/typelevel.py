@@ -313,6 +313,59 @@ def _eval_cond(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
         return EXPANSION_ANY
 
 
+@register_operator("_And")
+def _eval_and(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """Evaluate _And[cond1, cond2] - logical AND of type booleans."""
+    if len(typ.args) != 2:
+        return UninhabitedType()
+
+    left = extract_literal_bool(evaluator.eval_proper(typ.args[0]))
+    if left is False:
+        # Short-circuit: False and X = False
+        return evaluator.literal_bool(False)
+    if left is None:
+        return UninhabitedType()
+
+    right = extract_literal_bool(evaluator.eval_proper(typ.args[1]))
+    if right is None:
+        return UninhabitedType()
+
+    return evaluator.literal_bool(right)
+
+
+@register_operator("_Or")
+def _eval_or(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """Evaluate _Or[cond1, cond2] - logical OR of type booleans."""
+    if len(typ.args) != 2:
+        return UninhabitedType()
+
+    left = extract_literal_bool(evaluator.eval_proper(typ.args[0]))
+    if left is True:
+        # Short-circuit: True or X = True
+        return evaluator.literal_bool(True)
+    if left is None:
+        return UninhabitedType()
+
+    right = extract_literal_bool(evaluator.eval_proper(typ.args[1]))
+    if right is None:
+        return UninhabitedType()
+
+    return evaluator.literal_bool(right)
+
+
+@register_operator("_Not")
+def _eval_not(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """Evaluate _Not[cond] - logical NOT of a type boolean."""
+    if len(typ.args) != 1:
+        return UninhabitedType()
+
+    result = extract_literal_bool(evaluator.eval_proper(typ.args[0]))
+    if result is None:
+        return UninhabitedType()
+
+    return evaluator.literal_bool(not result)
+
+
 @register_operator("Iter")
 def _eval_iter(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     """Evaluate a type-level iterator (Iter[T])."""

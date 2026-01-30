@@ -57,6 +57,91 @@ reveal_type(x6)  # N: Revealed type is "Literal[False]"
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
 
+[case testTypeOperatorAnd]
+from typing import IsSub, Literal
+
+# _And is the internal representation for `and` in type booleans
+# We test it directly via IsSub compositions
+
+# True and True = True
+x1: Literal[True] if IsSub[int, object] and IsSub[str, object] else Literal[False]
+reveal_type(x1)  # N: Revealed type is "Literal[True]"
+
+# True and False = False
+x2: Literal[True] if IsSub[int, object] and IsSub[int, str] else Literal[False]
+reveal_type(x2)  # N: Revealed type is "Literal[False]"
+
+# False and True = False (short-circuit)
+x3: Literal[True] if IsSub[int, str] and IsSub[str, object] else Literal[False]
+reveal_type(x3)  # N: Revealed type is "Literal[False]"
+
+# False and False = False
+x4: Literal[True] if IsSub[int, str] and IsSub[str, int] else Literal[False]
+reveal_type(x4)  # N: Revealed type is "Literal[False]"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testTypeOperatorOr]
+from typing import IsSub, Literal
+
+# _Or is the internal representation for `or` in type booleans
+
+# True or True = True
+x1: Literal[True] if IsSub[int, object] or IsSub[str, object] else Literal[False]
+reveal_type(x1)  # N: Revealed type is "Literal[True]"
+
+# True or False = True (short-circuit)
+x2: Literal[True] if IsSub[int, object] or IsSub[int, str] else Literal[False]
+reveal_type(x2)  # N: Revealed type is "Literal[True]"
+
+# False or True = True
+x3: Literal[True] if IsSub[int, str] or IsSub[str, object] else Literal[False]
+reveal_type(x3)  # N: Revealed type is "Literal[True]"
+
+# False or False = False
+x4: Literal[True] if IsSub[int, str] or IsSub[str, int] else Literal[False]
+reveal_type(x4)  # N: Revealed type is "Literal[False]"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testTypeOperatorNot]
+from typing import IsSub, Literal
+
+# _Not is the internal representation for `not` in type booleans
+
+# not True = False
+x1: Literal[True] if not IsSub[int, object] else Literal[False]
+reveal_type(x1)  # N: Revealed type is "Literal[False]"
+
+# not False = True
+x2: Literal[True] if not IsSub[int, str] else Literal[False]
+reveal_type(x2)  # N: Revealed type is "Literal[True]"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testTypeOperatorBoolCombinations]
+from typing import IsSub, Literal
+
+# Test combinations of and, or, not
+
+# not (True and False) = True
+x1: Literal[True] if not (IsSub[int, object] and IsSub[int, str]) else Literal[False]
+reveal_type(x1)  # N: Revealed type is "Literal[True]"
+
+# (True or False) and True = True
+x2: Literal[True] if (IsSub[int, object] or IsSub[int, str]) and IsSub[str, object] else Literal[False]
+reveal_type(x2)  # N: Revealed type is "Literal[True]"
+
+# not False or False = True
+x3: Literal[True] if not IsSub[int, str] or IsSub[str, int] else Literal[False]
+reveal_type(x3)  # N: Revealed type is "Literal[True]"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
 
 [case testTypeOperatorTernarySyntax]
 from typing import IsSub

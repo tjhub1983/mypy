@@ -64,3 +64,17 @@ _FalseType = TypeVar('_FalseType')
 @type_check_only
 @_type_operator
 class _Cond(Generic[_T, _TrueType, _FalseType]): ...
+
+_T2 = TypeVar('_T2')
+
+@type_check_only
+@_type_operator
+class _And(Generic[_T, _T2]): ...
+
+@type_check_only
+@_type_operator
+class _Or(Generic[_T, _T2]): ...
+
+@type_check_only
+@_type_operator
+class _Not(Generic[_T]): ...

@@ -164,6 +164,22 @@ def expr_to_unanalyzed_type(
             ],
             uses_pep604_syntax=True,
         )
+    elif isinstance(expr, OpExpr) and expr.op in ("and", "or"):
+        # Convert `A and B` to `_And[A, B]` and `A or B` to `_Or[A, B]`
+        op_name = "_And" if expr.op == "and" else "_Or"
+        return UnboundType(
+            f"__builtins__.{op_name}",
+            [
+                expr_to_unanalyzed_type(
+                    expr.left, options, allow_new_syntax, lookup_qualified=lookup_qualified
+                ),
+                expr_to_unanalyzed_type(
+                    expr.right, options, allow_new_syntax, lookup_qualified=lookup_qualified
+                ),
+            ],
+            line=expr.line,
+            column=expr.column,
+        )
     elif isinstance(expr, CallExpr) and isinstance(_parent, ListExpr):
         c = expr.callee
         names = []
@@ -232,6 +248,18 @@ def expr_to_unanalyzed_type(
     elif isinstance(expr, BytesExpr):
         return parse_type_string(expr.value, "builtins.bytes", expr.line, expr.column)
     elif isinstance(expr, UnaryExpr):
+        # Handle `not` for type booleans
+        if expr.op == "not":
+            return UnboundType(
+                "__builtins__._Not",
+                [
+                    expr_to_unanalyzed_type(
+                        expr.expr, options, allow_new_syntax, lookup_qualified=lookup_qualified
+                    )
+                ],
+                line=expr.line,
+                column=expr.column,
+            )
         typ = expr_to_unanalyzed_type(
             expr.expr, options, allow_new_syntax, lookup_qualified=lookup_qualified
         )

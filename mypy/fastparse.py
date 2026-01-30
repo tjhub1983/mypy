@@ -132,7 +132,7 @@ from mypy.util import bytes_to_human_readable_repr, unnamed_function
 PY_MINOR_VERSION: Final = sys.version_info[1]
 
 import ast as ast3
-from ast import AST, Attribute, Call, FunctionType, Name, Starred, UAdd, UnaryOp, USub
+from ast import AST, And, Attribute, Call, FunctionType, Name, Not, Starred, UAdd, UnaryOp, USub
 
 
 def ast3_parse(
@@ -2062,6 +2062,10 @@ class TypeConverter:
 
     # UnaryOp(op, operand)
     def visit_UnaryOp(self, n: UnaryOp) -> Type:
+        # Handle `not` for type booleans
+        if isinstance(n.op, Not):
+            return self.visit_UnaryOp_not(n)
+
         # We support specifically Literal[-4], Literal[+4], and nothing else.
         # For example, Literal[~6] or Literal[not False] is not supported.
         typ = self.visit(n.operand)
@@ -2201,6 +2205,40 @@ class TypeConverter:
         assert isinstance(n.ctx, ast3.Load)
         result = self.translate_argument_list(n.elts)
         return result
+
+    # BoolOp(boolop op, expr* values)
+    def visit_BoolOp(self, n: ast3.BoolOp) -> Type:
+        """Handle boolean operations in type contexts.
+
+        Convert `A and B` to `_And[A, B]` and `A or B` to `_Or[A, B]`.
+        Chains like `A and B and C` become `_And[_And[A, B], C]`.
+        """
+        # Process left-to-right, building up nested operators
+        result = self.visit(n.values[0])
+        op_name = "_And" if isinstance(n.op, And) else "_Or"
+
+        for value in n.values[1:]:
+            right = self.visit(value)
+            result = UnboundType(
+                f"__builtins__.{op_name}",
+                [result, right],
+                line=self.line,
+                column=self.convert_column(n.col_offset),
+            )
+        return result
+
+    def visit_UnaryOp_not(self, n: UnaryOp) -> Type:
+        """Handle `not` in type contexts.
+
+        Convert `not X` to `_Not[X]`.
+        """
+        operand = self.visit(n.operand)
+        return UnboundType(
+            "__builtins__._Not",
+            [operand],
+            line=self.line,
+            column=self.convert_column(n.col_offset),
+        )
 
     # IfExp(expr test, expr body, expr orelse)
     def visit_IfExp(self, n: ast3.IfExp) -> Type:
