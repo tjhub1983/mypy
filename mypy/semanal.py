@@ -304,6 +304,7 @@ from mypy.types import (
     UnpackType,
     flatten_nested_tuples,
     get_proper_type,
+    get_proper_type_simple,
     get_proper_types,
     has_type_vars,
     is_named_instance,
@@ -4409,8 +4410,13 @@ class SemanticAnalyzer(
                 f'Cannot resolve name "{current_node.name}" (possible cyclic definition)'
             )
         elif is_invalid_recursive_alias({current_node}, current_node.target):
+            # Need to do get_proper_type_simple since we don't want
+            # any computation-based expansion done, or expansions in
+            # the arguments.
             target = (
-                "tuple" if isinstance(get_proper_type(current_node.target), TupleType) else "union"
+                "tuple"
+                if isinstance(get_proper_type_simple(current_node.target), TupleType)
+                else "union"
             )
             messages.append(f"Invalid recursive alias: a {target} item of itself")
         if detect_diverging_alias(

@@ -22,6 +22,7 @@ from mypy.subtypes import is_same_type, is_subtype
 from mypy.types import (
     AnyType,
     CallableType,
+    ComputedType,
     Instance,
     Parameters,
     ParamSpecType,
@@ -240,10 +241,12 @@ class TypeArgumentAnalyzer(MixedTraverserVisitor):
                     )
             elif isinstance(tvar, TypeVarTupleType):
                 p_arg = get_proper_type(arg)
-                # XXX: get_proper_type could possibly mess things up
-                # now that it might evaluate
-                assert isinstance(p_arg, TupleType)
-                for it in p_arg.items:
+                # Because of the exciting new world of type evaluation
+                # done in get_proper_type, it might expand to a
+                # builtins.tuple subtype instance if it is variadic.
+                assert isinstance(p_arg, (TupleType, Instance))
+                items = p_arg.items if isinstance(p_arg, TupleType) else p_arg.args
+                for it in items:
                     if self.check_non_paramspec(it, "TypeVarTuple", context):
                         is_invalid = True
         if is_invalid:
@@ -253,6 +256,9 @@ class TypeArgumentAnalyzer(MixedTraverserVisitor):
     def visit_unpack_type(self, typ: UnpackType) -> None:
         super().visit_unpack_type(typ)
         proper_type = get_proper_type(typ.type)
+        # If it is a ComputedType, it's probably stuck... and we'll just hope we are OK.
+        if isinstance(proper_type, ComputedType):
+            return
         if isinstance(proper_type, TupleType):
             return
         if isinstance(proper_type, TypeVarTupleType):

@@ -223,10 +223,23 @@ from typing import (
 )
 
 
-class Array2[DType, Shape]:
-
-    def __abs__(self) -> Array2[DType, Shape]:
+class Array[DType, *Shape]:
+    def __add__[*Shape2](
+        self,
+        other: Array[DType, *Shape2]
+    ) -> Array[DType, *Merge[tuple[*Shape], tuple[*Shape2]]]:
+    # ) -> Array[DType, *Broadcast[Shape, Shape2]]:
         raise BaseException
+
+def add[DType, *Shape1, *Shape2](
+    lhs: Array[DType, *Shape1],
+    rhs: Array[DType, *Shape2],
+) -> Array[DType, *Merge[tuple[*Shape1], tuple[*Shape2]]]:
+# ) -> Array[DType, *Broadcast[Shape1, Shape2]]:
+    raise BaseException
+
+
+class Array2[DType, Shape]:
 
     def __add__[Shape2](
         self,
@@ -307,11 +320,39 @@ reveal_type(m3)  # N: Revealed type is "tuple[Literal[4], Literal[3]]"
 
 #
 
-b1: Array2[float, tuple[L[4], L[1]]]
-b2: Array2[float, tuple[L[3]]]
+z1: Array2[float, tuple[L[4], L[1]]]
+z2: Array2[float, tuple[L[3]]]
 
-reveal_type(add2(b1, b2))  # N: Revealed type is "__main__.Array2[builtins.float, tuple[Literal[4], Literal[3]]]"
-reveal_type(b1 + b2)  # N: Revealed type is "__main__.Array2[builtins.float, tuple[Literal[4], Literal[3]]]"
+reveal_type(add2(z1, z2))  # N: Revealed type is "__main__.Array2[builtins.float, tuple[Literal[4], Literal[3]]]"
+reveal_type(z1 + z2)  # N: Revealed type is "__main__.Array2[builtins.float, tuple[Literal[4], Literal[3]]]"
+
+#
+
+b1: Array[float, int, int]
+b2: Array[float, int]
+reveal_type(b1 + b2)  # N: Revealed type is "__main__.Array[builtins.float, builtins.int, builtins.int]"
+
+
+#
+
+c1: Array[float, L[4], L[1]]
+c2: Array[float, L[3]]
+res1 = c1 + c2
+reveal_type(res1)  # N: Revealed type is "__main__.Array[builtins.float, Literal[4], Literal[3]]"
+
+res2 = add(c1, c2)
+reveal_type(res2)  # N: Revealed type is "__main__.Array[builtins.float, Literal[4], Literal[3]]"
+
+
+checkr: Array[float, L[4], L[3]] = res1
+checkr = res2
+
+#
+
+err1: Array[float, L[4], L[2]]
+err2: Array[float, L[3]]
+# err1 + err2  # XXX: We want to do this one but we get the wrong error location!
+
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]

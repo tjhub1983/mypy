@@ -1493,6 +1493,11 @@ class UnpackType(ProperType):
         typ = data["type"]
         return UnpackType(deserialize_type(typ))
 
+    def copy_modified(self, *, type: Type | None = None) -> UnpackType:
+        return UnpackType(
+            type if type is not None else self.type, self.line, self.column, self.from_star_syntax
+        )
+
     def __hash__(self) -> int:
         return hash(self.type)
 
@@ -3901,6 +3906,15 @@ def get_proper_type_simple(typ: Type | None) -> ProperType | None:
     return cast(ProperType, typ)
 
 
+def _could_be_computed_unpack(t: Type) -> bool:
+    return isinstance(t, TypeForComprehension) or (
+        # An unpack of a type alias or a computed type could expand to
+        # something we need to eval
+        isinstance(t, UnpackType)
+        and isinstance(t.type, (TypeAliasType, ComputedType))
+    )
+
+
 def _expand_type_fors_in_args(typ: ProperType) -> ProperType:
     """
     Expand any TypeForComprehensions in type arguments.
@@ -3914,18 +3928,22 @@ def _expand_type_fors_in_args(typ: ProperType) -> ProperType:
 
     typ2: ProperType
 
-    if isinstance(typ, TupleType) and any(
-        isinstance(st, TypeForComprehension) for st in typ.items
-    ):
+    if isinstance(typ, TupleType) and any(_could_be_computed_unpack(st) for st in typ.items):
         typ2 = typ.copy_modified(items=[get_proper_type(st) for st in typ.items])
         # expanding the types might produce Unpacks, which we use
         # expand_type to substitute in.
         typ = expand_type(typ2, {})
-    elif isinstance(typ, Instance) and any(
-        isinstance(st, TypeForComprehension) for st in typ.args
+    elif (
+        isinstance(typ, Instance)
+        and typ.type  # Make sure it's not a FakeInfo
+        and typ.type.has_type_var_tuple_type
+        and any(_could_be_computed_unpack(st) for st in typ.args)
     ):
         typ2 = typ.copy_modified(args=[get_proper_type(st) for st in typ.args])
         typ = expand_type(typ2, {})
+    elif isinstance(typ, UnpackType) and _could_be_computed_unpack(typ):
+        # No need to expand here
+        typ = typ.copy_modified(type=get_proper_type(typ.type))
 
     return typ
 

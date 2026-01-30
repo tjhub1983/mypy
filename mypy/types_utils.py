@@ -32,6 +32,7 @@ from mypy.types import (
     UnpackType,
     flatten_nested_unions,
     get_proper_type,
+    get_proper_type_simple,
     get_proper_types,
 )
 
@@ -66,7 +67,12 @@ def is_invalid_recursive_alias(seen_nodes: set[TypeAlias], target: Type) -> bool
         if target.alias in seen_nodes:
             return True
         assert target.alias, f"Unfixed type alias {target.type_ref}"
-        return is_invalid_recursive_alias(seen_nodes | {target.alias}, get_proper_type(target))
+        # Need to do get_proper_type_simple since we don't want
+        # any computation-based expansion done, or expansions in
+        # the arguments.
+        return is_invalid_recursive_alias(
+            seen_nodes | {target.alias}, get_proper_type_simple(target)
+        )
     if isinstance(target, ComputedType):
         # XXX: We need to do *something* useful here!!
         return False
