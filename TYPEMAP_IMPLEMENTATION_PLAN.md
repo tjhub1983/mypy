@@ -1,7 +1,7 @@
 # Implementation Plan: Type-Level Computation for Mypy
 
 This document outlines a plan for implementing the type-level
-computation proposal described in `../typemap/pre-pep.rst`.
+computation proposal described in `pep.rst`.
 
 ## Overview
 

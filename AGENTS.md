@@ -1,6 +1,12 @@
 This file provides guidance to coding agents, I guess.
 Also to humans some probably.
 
+## Current Work: Typemap PEP Implementation
+
+We are implementing a PEP draft for type-level computation. The specification
+is in `pep.rst`. Refer to it when implementing new type operators
+or features.
+
 ## Default virtualenv
 
 The default virtualenv is ``venv``, so most of the commands below
