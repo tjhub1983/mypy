@@ -270,16 +270,13 @@ def _call_by_value(evaluator: TypeLevelEvaluator, typ: Type) -> Type:
     recursive aliases get evaluated before substituted in, to make
     sure that they don't grow without bound.
 
-    FIXME: I am not sure this is sufficient to do just where we are doing it.
-    It is probably not. We may need to universally do this when there are
-    potentially computed arguments?
+    This shouldn't be necessary for correctness, but can be important
+    for performance.
 
-    XXX: Actually maybe this isn't needed at all??
-    I'm leaving the code in here for now in case I want to recover it easily.
+    We should *maybe* do it in more places! Possibly everywhere?  Or
+    maybe we should do it *never* and just do a better job of caching.
     """
-    ACTUALLY_DO_IT = False
-
-    if ACTUALLY_DO_IT and isinstance(typ, TypeAliasType):
+    if isinstance(typ, TypeAliasType):
         typ = typ.copy_modified(
             args=[get_proper_type(_call_by_value(evaluator, st)) for st in typ.args]
         )
@@ -287,6 +284,7 @@ def _call_by_value(evaluator: TypeLevelEvaluator, typ: Type) -> Type:
     # Evaluate recursively instead of letting it get handled in the
     # get_proper_type loop to help maintain better error contexts.
     return evaluator.eval_proper(typ)
+
 
 @register_operator("_Cond")
 def _eval_cond(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
