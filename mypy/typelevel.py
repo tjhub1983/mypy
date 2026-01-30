@@ -179,8 +179,13 @@ class TypeLevelEvaluator:
         self.ctx = ctx
         self.depth = 0
 
+        self.cache: dict[Type, Type] = {}
+
     def evaluate(self, typ: Type) -> Type:
         """Main entry point: evaluate a type to its simplified form."""
+
+        if typ in self.cache:
+            return self.cache[typ]
 
         if self.depth >= MAX_DEPTH:
             ctx = self.ctx or typ
@@ -197,6 +202,8 @@ class TypeLevelEvaluator:
                 rtyp = evaluate_comprehension(self, typ)
             else:
                 rtyp = typ  # Already a concrete type or can't be evaluated
+
+            self.cache[typ] = rtyp
 
             return rtyp
         finally:
