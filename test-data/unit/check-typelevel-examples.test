@@ -384,11 +384,6 @@ class Array[DType, *Shape]:
         raise BaseException
 
 
-type AppendTuple[A, B] = tuple[
-    *[x for x in Iter[A]],
-    B,
-]
-
 type MergeOne[T, S] = (
     T
     if Matches[T, S] or Matches[S, Literal[1]]
@@ -406,11 +401,15 @@ type Empty[T] = IsSub[Length[T], Literal[0]]
 type Merge[T, S] = (
     S if Bool[Empty[T]] else T if Bool[Empty[S]]
     else
-    AppendTuple[
-        Merge[DropLast[T], DropLast[S]],
+    tuple[
+        *Merge[DropLast[T], DropLast[S]],
         MergeOne[Last[T], Last[S]]
     ]
 )
+
+m0: Merge[tuple[L[4], L[5]], tuple[L[9], L[1], L[5]]]
+reveal_type(m0)  # N: Revealed type is "tuple[Literal[9], Literal[4], Literal[5]]"
+
 
 a1: Array[float, L[4], L[1]]
 a2: Array[float, L[3]]

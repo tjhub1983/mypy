@@ -32,6 +32,7 @@ from mypy.types import (
     TypeForComprehension,
     TypeOfAny,
     TypeOperatorType,
+    TypeVarLikeType,
     TypeVarType,
     UnboundType,
     UninhabitedType,
@@ -215,7 +216,9 @@ class TypeLevelEvaluator:
         # A call to another expansion via an alias got stuck, reraise here
         if is_stuck_expansion(typ):
             raise EvaluationStuck
-        if isinstance(typ, (TypeVarType, UnboundType, ComputedType)):
+        if isinstance(typ, (TypeVarLikeType, UnboundType, ComputedType)):
+            raise EvaluationStuck
+        if isinstance(typ, UnpackType) and isinstance(typ.type, TypeVarLikeType):
             raise EvaluationStuck
 
         return typ
@@ -436,10 +439,6 @@ def _eval_bool(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
         return UninhabitedType()
 
     arg_proper = evaluator.eval_proper(typ.args[0])
-
-    # Handle type variables - may be undecidable
-    if has_type_vars(arg_proper):
-        return EXPANSION_ANY
 
     # Check if Literal[True] is a subtype of arg (i.e., arg contains True)
     # and arg is not Never
@@ -933,10 +932,12 @@ def _eval_length(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     target = evaluator.eval_proper(typ.args[0])
 
     if isinstance(target, TupleType):
+        # Need to evaluate the elements before we inspect them
+        items = [evaluator.eval_proper(st) for st in target.items]
+
         # If there is an Unpack, it must be of an unbounded tuple, or
         # it would have been substituted out.
-        # TODO: Or would it be stuck? Think.
-        if any(isinstance(st, UnpackType) for st in target.items):
+        if any(isinstance(st, UnpackType) for st in items):
             return NoneType()
         return evaluator.literal_int(len(target.items))
     if isinstance(target, Instance) and target.type.has_base("builtins.tuple"):
