@@ -3911,7 +3911,12 @@ def _could_be_computed_unpack(t: Type) -> bool:
         # An unpack of a type alias or a computed type could expand to
         # something we need to eval
         isinstance(t, UnpackType)
-        and isinstance(t.type, (TypeAliasType, ComputedType))
+        and (
+            isinstance(t.type, (TypeAliasType, ComputedType))
+            # XXX: Some TupleTypes have snuck in in some cases and I
+            # need to debug this more
+            or (isinstance(t.type, ProperType) and isinstance(t.type, TupleType))
+        )
     )
 
 

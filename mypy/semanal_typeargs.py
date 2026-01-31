@@ -38,6 +38,7 @@ from mypy.types import (
     UnpackType,
     flatten_nested_tuples,
     get_proper_type,
+    get_proper_type_simple,
     get_proper_types,
     split_with_prefix_and_suffix,
 )
@@ -108,7 +109,7 @@ class TypeArgumentAnalyzer(MixedTraverserVisitor):
                 # if t.args and not any(isinstance(st, ComputedType) for st in t.args):
                 # Since we always allow unbounded type variables in alias definitions, we need
                 # to verify the arguments satisfy the upper bounds of the expansion as well.
-                get_proper_type(t).accept(self)
+                get_proper_type_simple(t).accept(self)
         if t.is_recursive:
             self.seen_aliases.discard(t.alias)
 

@@ -33,7 +33,6 @@ from mypy.types import (
     TypeOfAny,
     TypeOperatorType,
     TypeVarLikeType,
-    TypeVarType,
     UnboundType,
     UninhabitedType,
     UnionType,
@@ -1061,5 +1060,5 @@ def evaluate_computed_type(typ: ComputedType, ctx: Context | None = None) -> Typ
     finally:
         typelevel_ctx._evaluator = old_evaluator
 
-    # print("EVALED!!", res)
+    # print("EVALED!!", typ, "====>", res)
     return res

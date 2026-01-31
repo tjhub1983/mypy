@@ -255,11 +255,6 @@ def add2[DType, Shape1, Shape2](
     raise BaseException
 
 
-type AppendTuple[A, B] = tuple[
-    *[x for x in Iter[A]],
-    B,
-]
-
 type MergeOne[T, S] = (
     T
     if Matches[T, S] or Matches[S, Literal[1]]
@@ -276,11 +271,14 @@ type Last[T] = GetArg[T, tuple, Literal[-1]]
 # infinite recursions.
 type Empty[T] = IsSub[Length[T], Literal[0]]
 
+type Tup[*Ts] = tuple[*Ts]
+
 type Merge[T, S] = (
     S if Bool[Empty[T]] else T if Bool[Empty[S]]
     else
-    AppendTuple[
-        Merge[DropLast[T], DropLast[S]],
+    Tup[
+        # XXX: This is super wrong!
+        *Merge[DropLast[T], DropLast[S]],  # E: Broadcast mismatch: Literal[4], Literal[10]
         MergeOne[Last[T], Last[S]]
     ]
 )
@@ -289,7 +287,7 @@ type Merge[T, S] = (
 a0: MergeOne[L[1], L[5]]
 reveal_type(a0)  # N: Revealed type is "Literal[5]"
 
-a1: MergeOne[int, L[5]]  # E: Broadcast mismatch: builtins.int, Literal[5]
+a1: MergeOne[int, L[5]]  # E: Broadcast mismatch: int, Literal[5]
 reveal_type(a1)  # N: Revealed type is "Never"
 
 a2: MergeOne[L[5], L[5]]
