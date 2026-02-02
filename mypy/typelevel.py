@@ -16,7 +16,18 @@ from typing import TYPE_CHECKING, Final
 
 from mypy.expandtype import expand_type, expand_type_by_instance
 from mypy.maptype import map_instance_to_supertype
-from mypy.nodes import Context, FuncDef, Var
+from mypy.mro import calculate_mro
+from mypy.nodes import (
+    MDEF,
+    Block,
+    ClassDef,
+    Context,
+    FuncDef,
+    SymbolTable,
+    SymbolTableNode,
+    TypeInfo,
+    Var,
+)
 from mypy.subtypes import is_subtype
 from mypy.types import (
     AnyType,
@@ -43,7 +54,6 @@ from mypy.types import (
 )
 
 if TYPE_CHECKING:
-    from mypy.nodes import TypeInfo
     from mypy.semanal_shared import SemanticAnalyzerInterface
 
 
@@ -66,6 +76,9 @@ class TypeLevelContext:
         # XXX: but maybe we should always thread the evaluator back
         # ourselves or something instead?
         self._evaluator: TypeLevelEvaluator | None = None
+        # Counter for generating unique synthetic protocol names
+        # Reset when a new API context is set to ensure deterministic names per-module
+        self.synthetic_protocol_counter: int = 0
 
     @property
     def api(self) -> SemanticAnalyzerInterface | None:
@@ -82,11 +95,17 @@ class TypeLevelContext:
                 result = get_proper_type(some_type)
         """
         saved = self._api
+        saved_counter = self.synthetic_protocol_counter
         self._api = api
+        # HACK: Reset the counter when entering a new API context to ensure
+        # deterministic protocol names within each analysis context.
+        # This helps make tests more stable.
+        self.synthetic_protocol_counter = 0
         try:
             yield
         finally:
             self._api = saved
+            self.synthetic_protocol_counter = saved_counter
 
 
 # Global context instance for type-level computation
@@ -474,6 +493,28 @@ def extract_literal_string(typ: Type) -> str | None:
     if isinstance(typ, LiteralType) and isinstance(typ.value, str):
         return typ.value
     return None
+
+
+def extract_qualifier_strings(typ: Type) -> list[str]:
+    """Extract qualifier strings from a type that may be a Literal or Union of Literals.
+
+    Used to extract qualifiers from Member[..., quals, ...] where quals can be:
+    - A single Literal[str] like Literal["ClassVar"]
+    - A Union of Literals like Literal["ClassVar"] | Literal["Final"]
+    - Never (no qualifiers) - returns empty list
+    """
+    typ = get_proper_type(typ)
+    qual_strings: list[str] = []
+
+    if isinstance(typ, LiteralType) and isinstance(typ.value, str):
+        qual_strings.append(typ.value)
+    elif isinstance(typ, UnionType):
+        for item in typ.items:
+            item_proper = get_proper_type(item)
+            if isinstance(item_proper, LiteralType) and isinstance(item_proper.value, str):
+                qual_strings.append(item_proper.value)
+
+    return qual_strings
 
 
 def _get_args(evaluator: TypeLevelEvaluator, target: Type, base: Type) -> Sequence[Type] | None:
@@ -884,19 +925,7 @@ def _eval_new_typeddict(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) ->
         is_required = True  # Default is Required
         is_readonly = False
 
-        # Check qualifiers - can be a single Literal or a Union of Literals
-        quals_proper = get_proper_type(quals)
-        qual_strings: list[str] = []
-
-        if isinstance(quals_proper, LiteralType) and isinstance(quals_proper.value, str):
-            qual_strings.append(quals_proper.value)
-        elif isinstance(quals_proper, UnionType):
-            for item in quals_proper.items:
-                item_proper = get_proper_type(item)
-                if isinstance(item_proper, LiteralType) and isinstance(item_proper.value, str):
-                    qual_strings.append(item_proper.value)
-
-        for qual in qual_strings:
+        for qual in extract_qualifier_strings(quals):
             if qual == "NotRequired":
                 is_required = False
             elif qual == "Required":
@@ -919,6 +948,106 @@ def _eval_new_typeddict(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) ->
     return TypedDictType(
         items=items, required_keys=required_keys, readonly_keys=readonly_keys, fallback=fallback
     )
+
+
+@register_operator("NewProtocol")
+def _eval_new_protocol(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """Evaluate NewProtocol[*Members] -> create a new structural protocol type.
+
+    This creates a synthetic protocol class with members defined by the Member arguments.
+    The protocol type uses structural subtyping.
+    """
+
+    # Get the Member TypeInfo to verify arguments
+    member_info = evaluator.api.named_type_or_none("typing.Member")
+    if member_info is None:
+        return UninhabitedType()
+
+    # Get object type for the base class
+    # HACK: We don't inherit from Protocol directly because Protocol is not always
+    # a TypeInfo in test fixtures. Instead we just set is_protocol=True and inherit
+    # from object, which is how mypy handles protocols internally (the Protocol base
+    # is removed from bases but is_protocol is set).
+    object_type = evaluator.api.named_type("builtins.object")
+
+    # Build the members dictionary
+    members: dict[str, Type] = {}
+    member_vars: dict[str, tuple[Type, bool, bool]] = {}  # name -> (type, is_classvar, is_final)
+
+    for arg in evaluator.flatten_args(typ.args):
+        arg = get_proper_type(arg)
+
+        # Each argument should be a Member[name, typ, quals, init, definer]
+        if not isinstance(arg, Instance) or arg.type != member_info.type:
+            # Not a Member type - can't construct protocol
+            return UninhabitedType()
+
+        if len(arg.args) < 2:
+            return UninhabitedType()
+
+        # Extract name and type from Member args
+        name_type = arg.args[0]
+        item_type = arg.args[1]
+        name = extract_literal_string(name_type)
+        if name is None:
+            return UninhabitedType()
+
+        # Check qualifiers if present
+        is_classvar = False
+        is_final = False
+
+        if len(arg.args) >= 3:
+            for qual in extract_qualifier_strings(arg.args[2]):
+                if qual == "ClassVar":
+                    is_classvar = True
+                elif qual == "Final":
+                    is_final = True
+
+        members[name] = item_type
+        member_vars[name] = (item_type, is_classvar, is_final)
+
+    # Generate a unique name for the synthetic protocol
+    typelevel_ctx.synthetic_protocol_counter += 1
+    protocol_name = f"<synthetic_protocol_{typelevel_ctx.synthetic_protocol_counter}>"
+
+    # Create the synthetic protocol TypeInfo
+    # HACK: We create a ClassDef with an empty Block because TypeInfo requires one.
+    # This is purely synthetic and never actually executed.
+    class_def = ClassDef(protocol_name, Block([]))
+    class_def.fullname = f"__typelevel__.{protocol_name}"
+
+    info = TypeInfo(SymbolTable(), class_def, "__typelevel__")
+    class_def.info = info
+
+    # Mark as protocol
+    info.is_protocol = True
+    info.runtime_protocol = False  # These aren't runtime checkable
+
+    # Set up bases - inherit from object (not Protocol, since Protocol is just a marker)
+    info.bases = [object_type]
+
+    # HACK: Set up MRO manually since we don't have a full semantic analysis pass.
+    # For a protocol, the MRO should be: [this_protocol, object]
+    try:
+        calculate_mro(info)
+    except Exception:
+        # If MRO calculation fails, set up a minimal one
+        # HACK: Minimal MRO setup when calculate_mro fails
+        info.mro = [info, object_type.type]
+
+    # Add members to the symbol table
+    for name, (member_type, is_classvar, is_final) in member_vars.items():
+        var = Var(name, member_type)
+        var.info = info
+        var._fullname = f"{info.fullname}.{name}"
+        var.is_classvar = is_classvar
+        var.is_final = is_final
+        var.is_initialized_in_class = True
+        # Don't mark as inferred since we have explicit types
+        var.is_inferred = False
+        info.names[name] = SymbolTableNode(MDEF, var)
+
+    return Instance(info, [])
 
 
 @register_operator("Length")

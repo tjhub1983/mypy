@@ -939,3 +939,80 @@ foo(['a'], 'a')  # E: Argument 1 to "foo" has incompatible type "list[str]"; exp
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
+
+[case testTypeOperatorNewProtocolBasic]
+# flags: --python-version 3.14
+
+from typing import NewProtocol, Member, Literal
+
+# Basic NewProtocol creation
+type MyProto = NewProtocol[
+    Member[Literal["x"], int],
+    Member[Literal["y"], str],
+]
+
+# Check the protocol works with structural subtyping
+class Good:
+    x: int
+    y: str
+
+class Bad:
+    x: int
+    # Missing y
+
+def takes_proto(p: MyProto) -> None:
+    pass
+
+g: Good
+takes_proto(g)
+
+b: Bad
+takes_proto(b)  # E: Argument 1 to "takes_proto" has incompatible type "Bad"; expected "<synthetic_protocol_10>" \
+                # N: "Bad" is missing following "<synthetic_protocol_7>" protocol member: \
+                # N:     y
+
+
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testTypeOperatorNewProtocolSubtyping]
+# flags: --python-version 3.14
+
+from typing import NewProtocol, Member, Literal
+
+# Create a protocol with two members
+type Point = NewProtocol[
+    Member[Literal["x"], int],
+    Member[Literal["y"], int],
+]
+
+# Any class with x: int and y: int should satisfy Point
+class Point2D:
+    x: int
+    y: int
+
+class Point3D:
+    x: int
+    y: int
+    z: int
+
+class NotAPoint:
+    a: int
+    b: int
+
+def draw(p: Point) -> None:
+    pass
+
+p2d: Point2D
+p3d: Point3D
+nap: NotAPoint
+
+draw(p2d)  # OK - has x and y
+draw(p3d)  # OK - has x and y (plus z is fine)
+draw(nap)  # E: Argument 1 to "draw" has incompatible type "NotAPoint"; expected "<synthetic_protocol_13>"
+
+
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
