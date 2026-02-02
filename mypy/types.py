@@ -4071,12 +4071,18 @@ class TypeStrVisitor(SyntheticTypeVisitor[str]):
     """
 
     def __init__(
-        self, id_mapper: IdMapper | None = None, expand: bool = False, *, options: Options
+        self,
+        id_mapper: IdMapper | None = None,
+        expand: bool = False,
+        expand_recursive: bool = False,
+        *,
+        options: Options,
     ) -> None:
         self.id_mapper = id_mapper
         self.options = options
         self.dotted_aliases: set[TypeAliasType] | None = None
         self.expand = expand
+        self.expand_recursive = expand_recursive
 
     def visit_unbound_type(self, t: UnboundType, /) -> str:
         s = t.name + "?"
@@ -4366,7 +4372,7 @@ class TypeStrVisitor(SyntheticTypeVisitor[str]):
         if t.alias is None:
             return "<alias (unfixed)>"
 
-        if self.expand:
+        if (self.expand and not t.is_recursive) or self.expand_recursive:
             if not t.is_recursive:
                 return get_proper_type(t).accept(self)
             if self.dotted_aliases is None:

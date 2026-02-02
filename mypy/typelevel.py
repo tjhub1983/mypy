@@ -76,9 +76,6 @@ class TypeLevelContext:
         # XXX: but maybe we should always thread the evaluator back
         # ourselves or something instead?
         self._evaluator: TypeLevelEvaluator | None = None
-        # Counter for generating unique synthetic protocol names
-        # Reset when a new API context is set to ensure deterministic names per-module
-        self.synthetic_protocol_counter: int = 0
 
     @property
     def api(self) -> SemanticAnalyzerInterface | None:
@@ -95,17 +92,11 @@ class TypeLevelContext:
                 result = get_proper_type(some_type)
         """
         saved = self._api
-        saved_counter = self.synthetic_protocol_counter
         self._api = api
-        # HACK: Reset the counter when entering a new API context to ensure
-        # deterministic protocol names within each analysis context.
-        # This helps make tests more stable.
-        self.synthetic_protocol_counter = 0
         try:
             yield
         finally:
             self._api = saved
-            self.synthetic_protocol_counter = saved_counter
 
 
 # Global context instance for type-level computation
@@ -950,6 +941,24 @@ def _eval_new_typeddict(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) ->
     )
 
 
+def _proto_entry_str(entry: tuple[Type, bool, bool]) -> str:
+    typ, is_classvar, is_final = entry
+    # XXX: We fully expand the type here for stringifying, which is
+    # potentially dangerous...
+    # TODO: We'll need to prevent recursion or something.
+    styp = typ.str_with_options(expand=True)
+    if is_classvar:
+        styp = f"ClassVar[{styp}]"
+    if is_final:
+        styp = f"Final[{styp}]"
+    return styp
+
+
+def _proto_str(map: dict[str, tuple[Type, bool, bool]]) -> str:
+    body = [f"{name}: {_proto_entry_str(entry)}" for name, entry in map.items()]
+    return f"NewProtocol[{', '.join(body)}]"
+
+
 @register_operator("NewProtocol")
 def _eval_new_protocol(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     """Evaluate NewProtocol[*Members] -> create a new structural protocol type.
@@ -958,20 +967,21 @@ def _eval_new_protocol(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> 
     The protocol type uses structural subtyping.
     """
 
+    # TODO: methods are probably in bad shape
+
     # Get the Member TypeInfo to verify arguments
     member_info = evaluator.api.named_type_or_none("typing.Member")
     if member_info is None:
         return UninhabitedType()
 
     # Get object type for the base class
-    # HACK: We don't inherit from Protocol directly because Protocol is not always
+    # N.B: We don't inherit from Protocol directly because Protocol is not always
     # a TypeInfo in test fixtures. Instead we just set is_protocol=True and inherit
     # from object, which is how mypy handles protocols internally (the Protocol base
     # is removed from bases but is_protocol is set).
     object_type = evaluator.api.named_type("builtins.object")
 
     # Build the members dictionary
-    members: dict[str, Type] = {}
     member_vars: dict[str, tuple[Type, bool, bool]] = {}  # name -> (type, is_classvar, is_final)
 
     for arg in evaluator.flatten_args(typ.args):
@@ -987,10 +997,11 @@ def _eval_new_protocol(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> 
 
         # Extract name and type from Member args
         name_type = arg.args[0]
-        item_type = arg.args[1]
         name = extract_literal_string(name_type)
         if name is None:
             return UninhabitedType()
+
+        item_type = arg.args[1]
 
         # Check qualifiers if present
         is_classvar = False
@@ -1003,12 +1014,12 @@ def _eval_new_protocol(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> 
                 elif qual == "Final":
                     is_final = True
 
-        members[name] = item_type
         member_vars[name] = (item_type, is_classvar, is_final)
 
     # Generate a unique name for the synthetic protocol
-    typelevel_ctx.synthetic_protocol_counter += 1
-    protocol_name = f"<synthetic_protocol_{typelevel_ctx.synthetic_protocol_counter}>"
+    # XXX: I hope that it is unique based on the inputs?
+    # Should we cache it also?
+    protocol_name = _proto_str(member_vars)
 
     # Create the synthetic protocol TypeInfo
     # HACK: We create a ClassDef with an empty Block because TypeInfo requires one.

@@ -4,10 +4,8 @@
 from typing import Literal, Unpack, TypedDict
 
 from typing import (
-    # NewProtocol,
+    NewProtocol,
     BaseTypedDict,
-    NewTypedDict,
-    NewTypedDict as NewProtocol,
     Iter,
     Attrs,
     IsSub,
@@ -84,7 +82,7 @@ def select_ex[ModelT, K: BaseTypedDict](
     typ: type[ModelT],
     kwargs: K,
 ) -> list[
-    NewTypedDict[
+    NewProtocol[
         *[
             Member[
                 GetName[c],
@@ -187,7 +185,7 @@ class Args0(TypedDict):
     name: Literal[True]
 
 args0: Args0
-reveal_type(select_ex(User, args0))  # N: Revealed type is "builtins.list[TypedDict({'id': builtins.int, 'name': builtins.str})]"
+reveal_type(select_ex(User, args0))  # N: Revealed type is "builtins.list[__typelevel__.NewProtocol[id: builtins.int, name: builtins.str]]"
 
 
 class Args1(TypedDict):
@@ -196,7 +194,7 @@ class Args1(TypedDict):
     posts: Literal[True]
 
 args1: Args1
-reveal_type(select_ex(User, args1))  # N: Revealed type is "builtins.list[TypedDict({'name': builtins.str, 'email': builtins.str, 'posts': builtins.list[TypedDict({'id': builtins.int, 'title': builtins.str, 'content': builtins.str})]})]"
+reveal_type(select_ex(User, args1))  # N: Revealed type is "builtins.list[__typelevel__.NewProtocol[name: builtins.str, email: builtins.str, posts: builtins.list[__typelevel__.NewProtocol[id: builtins.int, title: builtins.str, content: builtins.str]]]]"
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]

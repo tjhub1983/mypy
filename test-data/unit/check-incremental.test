@@ -283,6 +283,45 @@ type PropsOnly[T] = list[
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
 
+[case testIncrementalNewProtocol]
+# flags: --python-version 3.14
+import a
+import b
+
+[file a.py]
+
+from typing import NewProtocol, Member, Literal, Iter
+
+# Basic NewProtocol creation
+type MyProto = NewProtocol[
+    Member[Literal["x"], int],
+    Member[Literal["y"], str],
+]
+x: MyProto
+
+type LinkedList[T] = NewProtocol[
+    Member[Literal["data"], T],
+    Member[Literal["next"], LinkedList[T]],
+]
+
+z: LinkedList[str]
+
+lol: tuple[*[t for t in Iter[tuple[MyProto]]]]
+
+asdf: NewProtocol[
+    Member[Literal["x"], int],
+    Member[Literal["y"], str],
+]
+
+[file b.py]
+
+[file b.py.2]
+
+# dummy change
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
 [case testIncrementalMethodInterfaceChange]
 import mod1
 
