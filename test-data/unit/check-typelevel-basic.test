@@ -902,3 +902,40 @@ reveal_type(y)  # N: Revealed type is "builtins.str"
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
+
+
+[case testTypeOperatorConditionalArg1]
+# flags: --python-version 3.14
+
+from typing import IsSub
+
+def foo[T](x: T, y: list[T] if IsSub[T, int] else T) -> T:
+    return x
+
+
+foo(0, 0)  # E: Argument 2 to "foo" has incompatible type "int"; expected "list[int]"
+foo(0, [0])
+foo('a', 'a')
+foo('a', ['a'])  # E: Argument 2 to "foo" has incompatible type "list[str]"; expected "str"
+
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testTypeOperatorConditionalArg2]
+# flags: --python-version 3.14
+
+from typing import IsSub
+
+def foo[T](y: list[T] if IsSub[T, int] else T, x: T) -> T:
+    return x
+
+
+foo(0, 0)  # E: Argument 1 to "foo" has incompatible type "int"; expected "list[int]"
+foo([0], 0)
+foo('a', 'a')
+foo(['a'], 'a')  # E: Argument 1 to "foo" has incompatible type "list[str]"; expected "str"
+
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
