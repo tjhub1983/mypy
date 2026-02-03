@@ -471,23 +471,9 @@ type GetFieldItem[T, K] = typing.GetMemberType[
 
 ##
 
-# XXX: This is an atrocity, but Union doesn't work with variadics yet.
-type NewUnionInner[Ts] = (
-    typing.Never
-    if typing.Matches[typing.Length[Ts], typing.Literal[0]]
-    else
-    typing.GetArg[Ts, tuple, Literal[0]]
-    if typing.Matches[typing.Length[Ts], typing.Literal[1]]
-    else
-    typing.GetArg[Ts, tuple, Literal[0]] |
-    NewUnionInner[typing.Slice[Ts, Literal[1], None]]
-)
-type NewUnion[*Ts] = NewUnionInner[tuple[*Ts]]
-# type NewUnion[*Ts] = Union[*Ts]
-
 # Strip `| None` from a type by iterating over its union components
 # and filtering
-type NotOptional[T] = NewUnion[
+type NotOptional[T] = Union[
     *[x for x in typing.Iter[typing.FromUnion[T]] if not typing.IsSub[x, None]]
 ]
 

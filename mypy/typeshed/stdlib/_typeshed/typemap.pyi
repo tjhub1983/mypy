@@ -187,6 +187,15 @@ class NewTypedDict(Generic[Unpack[_Ts]]):
 
     ...
 
+@_type_operator
+class _NewUnion(Generic[Unpack[_Ts]]):
+    """
+    Construct a union type from the given type arguments.
+    _NewUnion[int, str, bool] evaluates to int | str | bool.
+    """
+
+    ...
+
 # --- Boolean/Conditional Operators ---
 
 @_type_operator

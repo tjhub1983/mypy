@@ -303,6 +303,9 @@ class NewTypedDict(Generic[Unpack[_Ts]]): ...
 @_type_operator
 class NewProtocol(Generic[Unpack[_Ts]]): ...
 
+@_type_operator
+class _NewUnion(Generic[Unpack[_Ts]]): ...
+
 # Member data type for type-level computation
 _Name = TypeVar('_Name')
 _Type = TypeVar('_Type')

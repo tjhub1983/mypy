@@ -1270,6 +1270,7 @@ if sys.version_info >= (3, 15):
         NamedParam as NamedParam,
         NewProtocol as NewProtocol,
         NewTypedDict as NewTypedDict,
+        _NewUnion as _NewUnion,
         Param as Param,
         ParamQuals as ParamQuals,
         PosDefaultParam as PosDefaultParam,

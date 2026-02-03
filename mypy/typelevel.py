@@ -29,6 +29,7 @@ from mypy.nodes import (
     Var,
 )
 from mypy.subtypes import is_subtype
+from mypy.typeops import make_simplified_union
 from mypy.types import (
     AnyType,
     ComputedType,
@@ -579,6 +580,13 @@ def _eval_from_union(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Ty
     else:
         # Non-union becomes 1-tuple
         return evaluator.tuple_type([target])
+
+
+@register_operator("_NewUnion")
+def _eval_new_union(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """Evaluate _NewUnion[*Ts] -> union of all type arguments."""
+    args = evaluator.flatten_args(typ.args)
+    return make_simplified_union(args)
 
 
 @register_operator("GetMemberType")

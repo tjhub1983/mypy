@@ -339,6 +339,64 @@ reveal_type(y)  # N: Revealed type is "tuple[builtins.int]"
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
 
+[case testTypeOperatorNewUnion]
+# flags: --python-version 3.10
+# Test _NewUnion operator
+from typing import _NewUnion
+
+# Basic union construction
+x: _NewUnion[int, str, float]
+reveal_type(x)  # N: Revealed type is "builtins.int | builtins.str | builtins.float"
+
+# Single type stays as-is
+y: _NewUnion[int]
+reveal_type(y)  # N: Revealed type is "builtins.int"
+
+# Nested unions get flattened (note: bool is subtype of int so it gets simplified away)
+z: _NewUnion[int, str | bytes]
+reveal_type(z)  # N: Revealed type is "builtins.int | builtins.str | builtins.bytes"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testTypeOperatorToUnion]
+# flags: --python-version 3.10
+# Test FromUnion operator
+from typing import Union, Iter, Bool, Literal
+
+a: Union[*[x for x in Iter[tuple[int, str]]]]
+reveal_type(a)  # N: Revealed type is "builtins.int | builtins.str"
+
+b: Union[*[x for x in Iter[tuple[int, str]] if Bool[Literal[False]]]]
+reveal_type(b)  # N: Revealed type is "Never"
+
+c: Union[*tuple[int, str]]
+reveal_type(c)  # N: Revealed type is "builtins.int | builtins.str"
+
+d: Union[*tuple[()]]
+reveal_type(d)  # N: Revealed type is "Never"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testTypeOperatorNewUnionWithComprehension]
+# flags: --python-version 3.10
+# Test _NewUnion with comprehension
+from typing import _NewUnion, Iter, Attrs, GetType
+
+class Foo:
+    a: int
+    b: str
+    c: bytes
+
+# Build union of all attribute types
+AttrTypes = _NewUnion[*[GetType[m] for m in Iter[Attrs[Foo]]]]
+x: AttrTypes
+reveal_type(x)  # N: Revealed type is "builtins.int | builtins.str | builtins.bytes"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
 [case testTypeOperatorStringConcat]
 # flags: --python-version 3.10
 # Test string concatenation operator

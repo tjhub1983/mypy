@@ -652,7 +652,20 @@ class TypeAnalyser(SyntheticTypeVisitor[Type], TypeAnalyzerPluginInterface):
                 self.anal_array(t.args, allow_unpack=True), line=t.line, column=t.column
             )
         elif fullname == "typing.Union":
-            items = self.anal_array(t.args)
+            items = self.anal_array(t.args, allow_unpack=True)
+            # If there are any unpacks or for comprehensions, turn the
+            # Union into a _NewUnion type operator.  This approach has
+            # the strong advantage that we never need to deal with
+            # messed up union types.
+            if any(
+                isinstance(get_proper_type_simple(st), (UnpackType, TypeForComprehension))
+                for st in items
+            ):
+                operator = self.lookup_fully_qualified("typing._NewUnion")
+                assert operator and isinstance(operator.node, TypeInfo)
+                fallback = self.named_type("builtins.object")
+                return TypeOperatorType(operator.node, items, fallback, t.line, t.column)
+
             return UnionType.make_union(items, line=t.line, column=t.column)
         elif fullname == "typing.Optional":
             if len(t.args) != 1:
