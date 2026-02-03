@@ -957,20 +957,32 @@ def _eval_new_typeddict(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) ->
     )
 
 
-def _proto_entry_str(entry: tuple[Type, bool, bool]) -> str:
-    typ, is_classvar, is_final = entry
+def _proto_entry_str(entry: tuple[Type, Type, bool, bool]) -> str:
+    typ, init_type, is_classvar, is_final = entry
     # XXX: We fully expand the type here for stringifying, which is
     # potentially dangerous...
     # TODO: We'll need to prevent recursion or something.
     styp = typ.str_with_options(expand=True)
+
     if is_classvar:
         styp = f"ClassVar[{styp}]"
     if is_final:
         styp = f"Final[{styp}]"
+
+    # XXX: use evaluator?
+    # Put the initializers in also
+    init_type = get_proper_type(init_type)
+    if isinstance(init_type, LiteralType):
+        styp = f"{styp} = {init_type.value}"
+    elif isinstance(init_type, NoneType):
+        styp = f"{styp} = None"
+    elif not isinstance(init_type, UninhabitedType):
+        styp = f"{styp} = ..."
+
     return styp
 
 
-def _proto_str(map: dict[str, tuple[Type, bool, bool]]) -> str:
+def _proto_str(map: dict[str, tuple[Type, Type, bool, bool]]) -> str:
     body = [f"{name}: {_proto_entry_str(entry)}" for name, entry in map.items()]
     return f"NewProtocol[{', '.join(body)}]"
 
@@ -998,7 +1010,9 @@ def _eval_new_protocol(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> 
     object_type = evaluator.api.named_type("builtins.object")
 
     # Build the members dictionary
-    member_vars: dict[str, tuple[Type, bool, bool]] = {}  # name -> (type, is_classvar, is_final)
+    member_vars: dict[str, tuple[Type, Type, bool, bool]] = (
+        {}
+    )  # name -> (type, init_type, is_classvar, is_final)
 
     for arg in evaluator.flatten_args(typ.args):
         arg = get_proper_type(arg)
@@ -1030,7 +1044,11 @@ def _eval_new_protocol(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> 
                 elif qual == "Final":
                     is_final = True
 
-        member_vars[name] = (item_type, is_classvar, is_final)
+        init_type: Type = UninhabitedType()
+        if len(arg.args) >= 4:
+            init_type = arg.args[3]
+
+        member_vars[name] = (item_type, init_type, is_classvar, is_final)
 
     # Generate a unique name for the synthetic protocol
     # XXX: I hope that it is unique based on the inputs?
@@ -1063,13 +1081,14 @@ def _eval_new_protocol(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> 
         info.mro = [info, object_type.type]
 
     # Add members to the symbol table
-    for name, (member_type, is_classvar, is_final) in member_vars.items():
+    for name, (member_type, init_type, is_classvar, is_final) in member_vars.items():
         var = Var(name, member_type)
         var.info = info
         var._fullname = f"{info.fullname}.{name}"
         var.is_classvar = is_classvar
         var.is_final = is_final
         var.is_initialized_in_class = True
+        var.init_type = init_type
         # Don't mark as inferred since we have explicit types
         var.is_inferred = False
         info.names[name] = SymbolTableNode(MDEF, var)

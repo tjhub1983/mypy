@@ -569,10 +569,16 @@ pub: HeroPublic
 reveal_type(pub)  # N: Revealed type is "__typelevel__.NewProtocol[id: builtins.int, name: builtins.str, age: builtins.int | None]"
 
 creat: HeroCreate
-reveal_type(creat)  # N: Revealed type is "__typelevel__.NewProtocol[name: builtins.str, age: builtins.int | None, secret_name: builtins.str]"
+reveal_type(creat)  # N: Revealed type is "__typelevel__.NewProtocol[name: builtins.str, age: builtins.int | None = None, secret_name: builtins.str]"
 
 upd: HeroUpdate
-reveal_type(upd)  # N: Revealed type is "__typelevel__.NewProtocol[name: builtins.str | None, age: builtins.int | None | None, secret_name: builtins.str | None]"
+reveal_type(upd)  # N: Revealed type is "__typelevel__.NewProtocol[name: builtins.str | None = None, age: builtins.int | None | None = None, secret_name: builtins.str | None = None]"
+
+creat_members: tuple[*[typing.GetInit[p] for p in typing.Iter[typing.Members[HeroCreate]]]]
+reveal_type(creat_members)  # N: Revealed type is "tuple[Never, None, Never]"
+
+upd_types: tuple[*[typing.GetType[p] for p in typing.Iter[typing.Members[HeroUpdate]]]]
+reveal_type(upd_types)  # N: Revealed type is "tuple[builtins.str | None, builtins.int | None | None, builtins.str | None]"
 
 
 [builtins fixtures/typelevel.pyi]
