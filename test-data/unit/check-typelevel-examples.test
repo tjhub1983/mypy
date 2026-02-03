@@ -247,7 +247,7 @@ type Merge[T, S] = (
     S if Bool[Empty[T]] else T if Bool[Empty[S]]
     else
     Tup[
-        # XXX: This is super wrong!
+        # XXX: This error message position is super wrong!
         *Merge[DropLast[T], DropLast[S]],  # E: Broadcast mismatch: Literal[4], Literal[10]
         MergeOne[Last[T], Last[S]]
     ]
