@@ -595,11 +595,17 @@ def _eval_get_member_type(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) 
     if name is None:
         return UninhabitedType()
 
+    # TODO: Use the Members logic?
     if isinstance(target, Instance):
         node = target.type.names.get(name)
         if node is not None and node.type is not None:
             # Expand the attribute type with the instance's type arguments
             return expand_type_by_instance(node.type, target)
+        return UninhabitedType()
+    if isinstance(target, TypedDictType):
+        itype = target.items.get(name)
+        if itype is not None:
+            return itype
         return UninhabitedType()
 
     return UninhabitedType()
