@@ -866,9 +866,11 @@ def create_member_type(
     else:
         quals = UninhabitedType()
 
-    # For init, we currently don't track initializer literal types
-    # This would require changes to semantic analysis
+    # For init, use init_type when available (set during type checking for class members).
+    # The literal type extraction is done in checker.py when init_type is set.
     init: Type = UninhabitedType()
+    if isinstance(node, Var) and node.init_type is not None:
+        init = node.init_type
 
     return Instance(
         member_type_info,

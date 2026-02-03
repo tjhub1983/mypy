@@ -240,7 +240,13 @@ from mypy.types import (
     is_literal_type,
     is_named_instance,
 )
-from mypy.types_utils import is_overlapping_none, remove_optional, store_argument_type, strip_type
+from mypy.types_utils import (
+    is_overlapping_none,
+    remove_optional,
+    store_argument_type,
+    strip_type,
+    try_getting_literal,
+)
 from mypy.typetraverser import TypeTraverserVisitor
 from mypy.typevars import fill_typevars, fill_typevars_with_any, has_no_typevars
 from mypy.util import is_dunder, is_sunder
@@ -3409,6 +3415,16 @@ class TypeChecker(NodeVisitor[None], TypeCheckerSharedApi):
                     rvalue_type, lvalue_type = self.check_simple_assignment(
                         lvalue_type, rvalue, context=rvalue, inferred=inferred, lvalue=lvalue
                     )
+                    # Store init_type for annotated class members with explicit values.
+                    # This preserves the literal type information for the typemap Init field.
+                    if (
+                        isinstance(lvalue, NameExpr)
+                        and isinstance(lvalue.node, Var)
+                        and lvalue.node.is_initialized_in_class
+                        and lvalue.node.has_explicit_value
+                        and lvalue.node.init_type is None
+                    ):
+                        lvalue.node.init_type = try_getting_literal(rvalue_type)
                     # The above call may update inferred variable type. Prevent further
                     # inference.
                     inferred = None

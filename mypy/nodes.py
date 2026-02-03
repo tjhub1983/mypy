@@ -1358,6 +1358,7 @@ class Var(SymbolNode):
         "type",
         "setter_type",
         "final_value",
+        "init_type",
         "is_self",
         "is_cls",
         "is_ready",
@@ -1419,6 +1420,9 @@ class Var(SymbolNode):
         # store the literal value (unboxed) for the benefit of
         # tools like mypyc.
         self.final_value: int | float | complex | bool | str | None = None
+        # The type of the initializer expression, if this is a class member with
+        # an initializer. Used for the Init field in typemap Member types.
+        self.init_type: mypy.types.Type | None = None
         # Where the value was set (only for class attributes)
         self.final_unset_in_class = False
         self.final_set_in_init = False
@@ -1471,6 +1475,8 @@ class Var(SymbolNode):
         }
         if self.final_value is not None:
             data["final_value"] = self.final_value
+        if self.init_type is not None:
+            data["init_type"] = self.init_type.serialize()
         return data
 
     @classmethod
@@ -1494,6 +1500,8 @@ class Var(SymbolNode):
         v._fullname = data["fullname"]
         set_flags(v, data["flags"])
         v.final_value = data.get("final_value")
+        if data.get("init_type") is not None:
+            v.init_type = mypy.types.deserialize_type(data["init_type"])
         return v
 
     def write(self, data: WriteBuffer) -> None:
@@ -1527,6 +1535,7 @@ class Var(SymbolNode):
             ],
         )
         write_literal(data, self.final_value)
+        mypy.types.write_type_opt(data, self.init_type)
         write_tag(data, END_TAG)
 
     @classmethod
@@ -1567,6 +1576,7 @@ class Var(SymbolNode):
             v.final_value = complex(read_float_bare(data), read_float_bare(data))
         elif tag != LITERAL_NONE:
             v.final_value = read_literal(data, tag)
+        v.init_type = mypy.types.read_type_opt(data)
         assert read_tag(data) == END_TAG
         return v
 

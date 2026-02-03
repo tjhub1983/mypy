@@ -35,7 +35,7 @@ class Constants:
     NAME: str
 
 m: Members[Constants]
-reveal_type(m)  # N: Revealed type is "tuple[typing.Member[Literal['PI'], builtins.float, Literal['Final'], Never, __main__.Constants], typing.Member[Literal['NAME'], builtins.str, Never, Never, __main__.Constants]]"
+reveal_type(m)  # N: Revealed type is "tuple[typing.Member[Literal['PI'], builtins.float, Literal['Final'], builtins.float, __main__.Constants], typing.Member[Literal['NAME'], builtins.str, Never, Never, __main__.Constants]]"
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
@@ -313,6 +313,56 @@ TD = NewTypedDict[*[m for m in Iter[Attrs[Point]]]]
 x: TD
 reveal_type(x)  # N: Revealed type is "TypedDict({'x': builtins.int, 'y': builtins.int})"
 x = {'x': 1, 'y': 2}
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testTypeOperatorMembersInit]
+# flags: --python-version 3.12
+# Test Members Init field captures literal values from Final variables
+from typing import Members, Final, GetInit, Iter
+
+class Config:
+    NAME: Final[str] = "app"
+    VERSION: Final[int] = 42
+    ENABLED: Final[bool] = True
+    RATIO: Final[float] = 3.14
+    plain: str  # No initializer
+
+m: Members[Config]
+reveal_type(m)  # N: Revealed type is "tuple[typing.Member[Literal['NAME'], builtins.str, Literal['Final'], Literal['app'], __main__.Config], typing.Member[Literal['VERSION'], builtins.int, Literal['Final'], Literal[42], __main__.Config], typing.Member[Literal['ENABLED'], builtins.bool, Literal['Final'], Literal[True], __main__.Config], typing.Member[Literal['RATIO'], builtins.float, Literal['Final'], builtins.float, __main__.Config], typing.Member[Literal['plain'], builtins.str, Never, Never, __main__.Config]]"
+
+# Test GetInit accessor
+type InitValues = tuple[*[GetInit[m] for m in Iter[Members[Config]]]]
+x: InitValues
+reveal_type(x)  # N: Revealed type is "tuple[Literal['app'], Literal[42], Literal[True], builtins.float, Never]"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testTypeOperatorMembersInitNonFinal]
+# flags: --python-version 3.12
+# Test Members Init field for non-Final variables with initializers
+from typing import Members, Attrs, GetInit, Iter
+
+class Data:
+    name: str = "default"
+    email: str = "lol@lol.com"
+    count: int = 42
+    active: bool = True
+    no_init: str  # No initializer
+
+m: Members[Data]
+reveal_type(m)  # N: Revealed type is "tuple[typing.Member[Literal['name'], builtins.str, Never, Literal['default'], __main__.Data], typing.Member[Literal['email'], builtins.str, Never, Literal['lol@lol.com'], __main__.Data], typing.Member[Literal['count'], builtins.int, Never, Literal[42], __main__.Data], typing.Member[Literal['active'], builtins.bool, Never, Literal[True], __main__.Data], typing.Member[Literal['no_init'], builtins.str, Never, Never, __main__.Data]]"
+
+# Test Attrs also captures init
+a: Attrs[Data]
+reveal_type(a)  # N: Revealed type is "tuple[typing.Member[Literal['name'], builtins.str, Never, Literal['default'], __main__.Data], typing.Member[Literal['email'], builtins.str, Never, Literal['lol@lol.com'], __main__.Data], typing.Member[Literal['count'], builtins.int, Never, Literal[42], __main__.Data], typing.Member[Literal['active'], builtins.bool, Never, Literal[True], __main__.Data], typing.Member[Literal['no_init'], builtins.str, Never, Never, __main__.Data]]"
+
+# Test GetInit accessor for non-Final variables
+type InitValues = tuple[*[GetInit[m] for m in Iter[Attrs[Data]]]]
+x: InitValues
+reveal_type(x)  # N: Revealed type is "tuple[Literal['default'], Literal['lol@lol.com'], Literal[42], Literal[True], Never]"
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]

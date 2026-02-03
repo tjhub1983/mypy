@@ -2901,8 +2901,9 @@ x = b.c.A()
 import c
 
 [file c.py]
+FOO = 1
 class A:
-    x = 1
+    x = FOO
 
 [file d.py]
 import a
@@ -2913,8 +2914,9 @@ import b
 x: b.c.A
 
 [file c.py.3]
+FOO = 2
 class A:
-    x = 2
+    x = FOO
 
 [file d.py.4]
 import a
