@@ -1235,6 +1235,7 @@ if sys.version_info >= (3, 15):
         "ParamQuals",
         # Misc
         "BaseTypedDict",
+        "InitField",
     ]
     from _typeshed.typemap import (
         Attrs as Attrs,
@@ -1256,6 +1257,7 @@ if sys.version_info >= (3, 15):
         GetQuals as GetQuals,
         GetType as GetType,
         IsSub as IsSub,
+        InitField as InitField,
         Iter as Iter,
         KwargsParam as KwargsParam,
         Length as Length,

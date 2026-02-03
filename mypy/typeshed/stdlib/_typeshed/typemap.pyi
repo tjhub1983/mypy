@@ -5,7 +5,7 @@ and typemap.typing.
 """
 
 import typing_extensions
-from typing import Generic, Literal, TypeVar, TypedDict
+from typing import Any, Generic, Literal, TypeVar, TypedDict
 from typing_extensions import TypeVarTuple, Unpack, Never
 
 class BaseTypedDict(TypedDict):
@@ -14,6 +14,17 @@ class BaseTypedDict(TypedDict):
 
 _S = TypeVar("_S")
 _T = TypeVar("_T")
+
+_KwargDict = TypeVar('_KwargDict', bound=BaseTypedDict)
+
+# Inherit from Any to allow the assignments.
+# TODO: Should we do this in a more principled way?
+class InitField(Generic[_KwargDict], Any):
+    def __init__(self, **kwargs: Unpack[_KwargDict]) -> None:
+        ...
+
+    def _get_kwargs(self) -> _KwargDict:
+        ...
 
 # Marker decorator for type operators. Classes decorated with this are treated
 # specially by the type checker as type-level computation operators.

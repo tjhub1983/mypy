@@ -331,3 +331,12 @@ GetType = GetMemberType[_MP, Literal["typ"]]
 GetQuals = GetMemberType[_MP, Literal["quals"]]
 GetInit = GetMemberType[_M, Literal["init"]]
 GetDefiner = GetMemberType[_M, Literal["definer"]]
+
+_KwargDict = TypeVar('_KwargDict', bound=BaseTypedDict)
+
+class InitField(Generic[_KwargDict], Any):
+    def __init__(self, **kwargs: Unpack[_KwargDict]) -> None:
+        ...
+
+    def _get_kwargs(self) -> _KwargDict:
+        ...
