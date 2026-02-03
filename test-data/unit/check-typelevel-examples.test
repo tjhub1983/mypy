@@ -61,26 +61,10 @@ as a literal type--all of these mechanisms lean very heavily on literal types.
 """
 
 
-# def select[ModelT, K: BaseTypedDict](
-#     typ: type[ModelT],
-#     /,
-#     **kwargs: Unpack[K],
-# ) -> list[
-#     NewProtocol[
-#         *[
-#             Member[
-#                 GetName[c],
-#                 ConvertField[GetMemberType[ModelT, GetName[c]]],
-#             ]
-#             for c in Iter[Attrs[K]]
-#         ]
-#     ]
-# ]:
-#     return []
-
-def select_ex[ModelT, K: BaseTypedDict](
+def select[ModelT, K: BaseTypedDict](
     typ: type[ModelT],
-    kwargs: K,
+    /,
+    **kwargs: Unpack[K],
 ) -> list[
     NewProtocol[
         *[
@@ -133,13 +117,11 @@ type AdjustLink[Tgt, LinkTy] = list[Tgt] if IsSub[LinkTy, MultiLink] else Tgt
 contains all the ``Property`` attributes of ``T``.
 
 """
-type PropsOnly[T] = list[
-    NewProtocol[
-        *[
-            Member[GetName[p], PointerArg[GetType[p]]]
-            for p in Iter[Attrs[T]]
-            if IsSub[GetType[p], Property]
-        ]
+type PropsOnly[T] = NewProtocol[
+    *[
+        Member[GetName[p], PointerArg[GetType[p]]]
+        for p in Iter[Attrs[T]]
+        if IsSub[GetType[p], Property]
     ]
 ]
 
@@ -173,28 +155,18 @@ class User:
 
     name: Property[str]
     email: Property[str]
-    posts: Link[Post]
+    posts: MultiLink[Post]
 
 
 ####
 
-# We used TypedDicts explicitly here
+reveal_type(select(User, id=True, name=True))  # N: Revealed type is "builtins.list[__typelevel__.NewProtocol[id: builtins.int, name: builtins.str]]"
 
-class Args0(TypedDict):
-    id: Literal[True]
-    name: Literal[True]
-
-args0: Args0
-reveal_type(select_ex(User, args0))  # N: Revealed type is "builtins.list[__typelevel__.NewProtocol[id: builtins.int, name: builtins.str]]"
+reveal_type(select(User, name=True, email=True, posts=True))  # N: Revealed type is "builtins.list[__typelevel__.NewProtocol[name: builtins.str, email: builtins.str, posts: builtins.list[__typelevel__.NewProtocol[id: builtins.int, title: builtins.str, content: builtins.str]]]]"
 
 
-class Args1(TypedDict):
-    name: Literal[True]
-    email: Literal[True]
-    posts: Literal[True]
+reveal_type(select(Post, title=True, comments=True, author=True))  # N: Revealed type is "builtins.list[__typelevel__.NewProtocol[title: builtins.str, comments: builtins.list[__typelevel__.NewProtocol[id: builtins.int, name: builtins.str]], author: __typelevel__.NewProtocol[id: builtins.int, name: builtins.str]]]"
 
-args1: Args1
-reveal_type(select_ex(User, args1))  # N: Revealed type is "builtins.list[__typelevel__.NewProtocol[name: builtins.str, email: builtins.str, posts: builtins.list[__typelevel__.NewProtocol[id: builtins.int, title: builtins.str, content: builtins.str]]]]"
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
