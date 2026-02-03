@@ -581,10 +581,10 @@ def _eval_from_union(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Ty
         return evaluator.tuple_type([target])
 
 
-@register_operator("GetAttr")
+@register_operator("GetMemberType")
 @lift_over_unions
-def _eval_get_attr(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
-    """Evaluate GetAttr[T, Name] - get attribute type from T."""
+def _eval_get_member_type(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """Evaluate GetMemberType[T, Name] - get attribute type from T."""
     if len(typ.args) != 2:
         return UninhabitedType()
 

@@ -12,7 +12,7 @@ from typing import (
     GetType,
     Member,
     GetName,
-    GetAttr,
+    GetMemberType,
     GetArg,
 )
 
@@ -56,7 +56,7 @@ type-annotated attribute of ``K``, while calling ``NewProtocol`` with
 
 ``GetName`` is a getter operator that fetches the name of a ``Member``
 as a literal type--all of these mechanisms lean very heavily on literal types.
-``GetAttr`` gets the type of an attribute from a class.
+``GetMemberType`` gets the type of an attribute from a class.
 
 """
 
@@ -70,7 +70,7 @@ as a literal type--all of these mechanisms lean very heavily on literal types.
 #         *[
 #             Member[
 #                 GetName[c],
-#                 ConvertField[GetAttr[ModelT, GetName[c]]],
+#                 ConvertField[GetMemberType[ModelT, GetName[c]]],
 #             ]
 #             for c in Iter[Attrs[K]]
 #         ]
@@ -86,7 +86,7 @@ def select_ex[ModelT, K: BaseTypedDict](
         *[
             Member[
                 GetName[c],
-                ConvertField[GetAttr[ModelT, GetName[c]]],
+                ConvertField[GetMemberType[ModelT, GetName[c]]],
             ]
             for c in Iter[Attrs[K]]
         ]

@@ -265,7 +265,7 @@ class GetArgs(Generic[T, U]): ...
 class FromUnion(Generic[T]): ...
 
 @_type_operator
-class GetAttr(Generic[T, U]): ...
+class GetMemberType(Generic[T, U]): ...
 
 @_type_operator
 class Slice(Generic[T, U, V]): ...
@@ -326,8 +326,8 @@ class Member(Generic[_Name, _Type, _Quals, _Init, _Definer]):
 _MP = TypeVar("_MP")
 _M = TypeVar("_M")
 
-GetName = GetAttr[_MP, Literal["name"]]
-GetType = GetAttr[_MP, Literal["typ"]]
-GetQuals = GetAttr[_MP, Literal["quals"]]
-GetInit = GetAttr[_M, Literal["init"]]
-GetDefiner = GetAttr[_M, Literal["definer"]]
+GetName = GetMemberType[_MP, Literal["name"]]
+GetType = GetMemberType[_MP, Literal["typ"]]
+GetQuals = GetMemberType[_MP, Literal["quals"]]
+GetInit = GetMemberType[_M, Literal["init"]]
+GetDefiner = GetMemberType[_M, Literal["definer"]]

@@ -104,7 +104,7 @@ class GetArgs(Generic[_T, _Base]):
     ...
 
 @_type_operator
-class GetAttr(Generic[_T, _Name]):
+class GetMemberType(Generic[_T, _Name]):
     """
     Get the type of attribute _Name from type _T.
     _Name must be a Literal[str].
@@ -139,7 +139,7 @@ class FromUnion(Generic[_T]):
 
     ...
 
-# --- Member/Param Accessors (defined as type aliases using GetAttr) ---
+# --- Member/Param Accessors (defined as type aliases using GetMemberType) ---
 
 # _MP = TypeVar("_MP", bound=Member[Any, Any, Any, Any, Any] | Param[Any, Any, Any])
 # _M = TypeVar("_M", bound=Member[Any, Any, Any, Any, Any])
@@ -148,11 +148,11 @@ _MP = TypeVar("_MP")
 _M = TypeVar("_M")
 
 
-GetName = GetAttr[_MP, Literal["name"]]
-GetType = GetAttr[_MP, Literal["typ"]]
-GetQuals = GetAttr[_MP, Literal["quals"]]
-GetInit = GetAttr[_M, Literal["init"]]
-GetDefiner = GetAttr[_M, Literal["definer"]]
+GetName = GetMemberType[_MP, Literal["name"]]
+GetType = GetMemberType[_MP, Literal["typ"]]
+GetQuals = GetMemberType[_MP, Literal["quals"]]
+GetInit = GetMemberType[_M, Literal["init"]]
+GetDefiner = GetMemberType[_M, Literal["definer"]]
 
 # --- Type Construction Operators ---
 
