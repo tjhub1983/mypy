@@ -1,7 +1,7 @@
 # Builtins stub used in tuple-related test cases.
 
 import _typeshed
-from typing import Iterable, Iterator, TypeVar, Generic, Sequence, Optional, overload, Tuple, Type, Self, type_check_only, _type_operator
+from typing import Iterable, Iterator, TypeVar, Generic, Sequence, Mapping, Optional, overload, Tuple, Type, Union, Self, type_check_only, _type_operator
 
 _T = TypeVar("_T")
 _Tco = TypeVar('_Tco', covariant=True)
@@ -9,6 +9,7 @@ _Tco = TypeVar('_Tco', covariant=True)
 class object:
     def __init__(self) -> None: pass
     def __new__(cls) -> Self: ...
+    def __str__(self) -> str: pass
 
 class type:
     def __init__(self, *a: object) -> None: pass
@@ -54,7 +55,25 @@ def isinstance(x: object, t: type) -> bool: pass
 
 class BaseException: pass
 
-class dict: pass
+KT = TypeVar('KT')
+VT = TypeVar('VT')
+T = TypeVar('T')
+
+class dict(Mapping[KT, VT]):
+    @overload
+    def __init__(self, **kwargs: VT) -> None: pass
+    @overload
+    def __init__(self, arg: Iterable[Tuple[KT, VT]], **kwargs: VT) -> None: pass
+    def __getitem__(self, key: KT) -> VT: pass
+    def __setitem__(self, k: KT, v: VT) -> None: pass
+    def __iter__(self) -> Iterator[KT]: pass
+    def __contains__(self, item: object) -> int: pass
+    @overload
+    def get(self, k: KT) -> Optional[VT]: pass
+    @overload
+    def get(self, k: KT, default: Union[VT, T]) -> Union[VT, T]: pass
+    def __len__(self) -> int: ...
+
 
 # Type-level computation stuff
 

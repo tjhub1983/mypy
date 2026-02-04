@@ -29,7 +29,7 @@ from mypy.nodes import (
     Var,
 )
 from mypy.subtypes import is_subtype
-from mypy.typeops import make_simplified_union
+from mypy.typeops import make_simplified_union, tuple_fallback
 from mypy.types import (
     AnyType,
     ComputedType,
@@ -44,6 +44,7 @@ from mypy.types import (
     TypeForComprehension,
     TypeOfAny,
     TypeOperatorType,
+    TypeType,
     TypeVarLikeType,
     UnboundType,
     UninhabitedType,
@@ -513,17 +514,36 @@ def _get_args(evaluator: TypeLevelEvaluator, target: Type, base: Type) -> Sequen
     target = evaluator.eval_proper(target)
     base = evaluator.eval_proper(base)
 
-    # TODO: Other cases
+    # TODO: Other cases:
+    # * Callable (and Parameters)
+    # * Overloaded
+
     if isinstance(target, Instance) and isinstance(base, Instance):
+        # TODO: base.is_protocol!!
+        # Probably implement it by filling in base with TypeVars and
+        # calling infer_constraints and solve.
+
         return get_type_args_for_base(target, base.type)
 
-    if (
-        isinstance(target, TupleType)
-        and isinstance(base, Instance)
-        # XXX: Do a real check
-        and target.partial_fallback == base
-    ):
-        return target.items
+    if isinstance(target, NoneType):
+        return _get_args(evaluator, evaluator.api.named_type("builtins.object"), base)
+
+    if isinstance(target, TupleType):
+        # TODO: tuple v tuple?
+        # TODO: Do a real check against more classes?
+        if isinstance(base, Instance) and target.partial_fallback == base:
+            return target.items
+
+        return _get_args(evaluator, tuple_fallback(target), base)
+
+    if isinstance(target, TypedDictType):
+        return _get_args(evaluator, target.fallback, base)
+
+    if isinstance(target, TypeType):
+        if isinstance(base, Instance) and base.type.fullname == "builtins.type":
+            return [target.item]
+        # TODO: metaclasses, protocols
+        return None
 
     return None
 
