@@ -1189,6 +1189,12 @@ if sys.version_info >= (3, 13):
 
 # --- Type-level computation support ---
 
+# HACK: Always import because its used in mypy internals.
+# FIXME: Don't put this weird internals stuff here.
+from _typeshed.typemap import (
+    _NewUnion as _NewUnion,
+)
+
 if sys.version_info >= (3, 15):
     __all__ += [
         # Type operators
@@ -1270,7 +1276,6 @@ if sys.version_info >= (3, 15):
         NamedParam as NamedParam,
         NewProtocol as NewProtocol,
         NewTypedDict as NewTypedDict,
-        _NewUnion as _NewUnion,
         Param as Param,
         ParamQuals as ParamQuals,
         PosDefaultParam as PosDefaultParam,

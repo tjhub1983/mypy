@@ -282,6 +282,15 @@ class TypeLevelEvaluator:
         """Create a tuple type with the given items."""
         return TupleType(items, self.api.named_type("builtins.tuple"))
 
+    def get_typemap_type(self, name: str) -> Instance:
+        # They are always in _typeshed.typemap in normal runs, but are
+        # sometimes missing from typing, depending on the version.
+        # But _typeshed.typemap doesn't exist in tests, so...
+        if typ := self.api.named_type_or_none(f"typing.{name}"):
+            return typ
+        else:
+            return self.api.named_type(f"_typeshed.typemap.{name}")
+
 
 def _call_by_value(evaluator: TypeLevelEvaluator, typ: Type) -> Type:
     """Make sure alias arguments are evaluated before expansion.
@@ -788,9 +797,7 @@ def _eval_members_impl(
     target = evaluator.eval_proper(typ.args[0])
 
     # Get the Member TypeInfo
-    member_info = evaluator.api.named_type_or_none("typing.Member")
-    if member_info is None:
-        return UninhabitedType()
+    member_info = evaluator.get_typemap_type("Member")
 
     # Handle TypedDict
     if isinstance(target, TypedDictType):
@@ -925,9 +932,7 @@ def _eval_new_typeddict(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) ->
     This is the inverse of Members[TypedDict].
     """
     # Get the Member TypeInfo to verify arguments
-    member_info = evaluator.api.named_type_or_none("typing.Member")
-    if member_info is None:
-        return UninhabitedType()
+    member_info = evaluator.get_typemap_type("Member")
 
     items: dict[str, Type] = {}
     required_keys: set[str] = set()
@@ -1018,9 +1023,7 @@ def _eval_new_protocol(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> 
     # TODO: methods are probably in bad shape
 
     # Get the Member TypeInfo to verify arguments
-    member_info = evaluator.api.named_type_or_none("typing.Member")
-    if member_info is None:
-        return UninhabitedType()
+    member_info = evaluator.get_typemap_type("Member")
 
     # Get object type for the base class
     # N.B: We don't inherit from Protocol directly because Protocol is not always
