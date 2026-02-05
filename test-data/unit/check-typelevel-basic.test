@@ -1,30 +1,30 @@
-[case testTypeOperatorIsSub]
-from typing import IsSub
+[case testTypeOperatorIsAssignable]
+from typing import IsAssignable
 
 # Ternary syntax should be converted to _Cond[condition, true_type, false_type]
-x: IsSub[int, object]
+x: IsAssignable[int, object]
 reveal_type(x)  # N: Revealed type is "Literal[True]"
 
-y: IsSub[int, str]
+y: IsAssignable[int, str]
 reveal_type(y)  # N: Revealed type is "Literal[False]"
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
 
-[case testTypeOperatorMatches]
-from typing import Matches, Literal
+[case testTypeOperatorIsEquivalent]
+from typing import IsEquivalent, Literal
 
-# Matches checks type equivalence (both directions of subtype)
-x1: Matches[int, int]
+# IsEquivalent checks type equivalence (both directions of subtype)
+x1: IsEquivalent[int, int]
 reveal_type(x1)  # N: Revealed type is "Literal[True]"
 
-x2: Matches[int, object]
+x2: IsEquivalent[int, object]
 reveal_type(x2)  # N: Revealed type is "Literal[False]"
 
-x3: Matches[Literal[1], Literal[1]]
+x3: IsEquivalent[Literal[1], Literal[1]]
 reveal_type(x3)  # N: Revealed type is "Literal[True]"
 
-x4: Matches[Literal[1], int]
+x4: IsEquivalent[Literal[1], int]
 reveal_type(x4)  # N: Revealed type is "Literal[False]"
 
 [builtins fixtures/typelevel.pyi]
@@ -32,7 +32,7 @@ reveal_type(x4)  # N: Revealed type is "Literal[False]"
 
 [case testTypeOperatorBool]
 # flags: --python-version 3.10
-from typing import Bool, Literal, IsSub, Union
+from typing import Bool, Literal, IsAssignable, Union
 
 # Bool checks if type contains Literal[True]
 x1: Bool[Literal[True]]
@@ -47,96 +47,96 @@ reveal_type(x3)  # N: Revealed type is "Literal[True]"
 x4: Bool[bool]
 reveal_type(x4)  # N: Revealed type is "Literal[True]"
 
-# Using Bool to check result of IsSub
-x5: Bool[IsSub[int, object]]
+# Using Bool to check result of IsAssignable
+x5: Bool[IsAssignable[int, object]]
 reveal_type(x5)  # N: Revealed type is "Literal[True]"
 
-x6: Bool[IsSub[int, str]]
+x6: Bool[IsAssignable[int, str]]
 reveal_type(x6)  # N: Revealed type is "Literal[False]"
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
 
 [case testTypeOperatorAnd]
-from typing import IsSub, Literal
+from typing import IsAssignable, Literal
 
 # _And is the internal representation for `and` in type booleans
-# We test it directly via IsSub compositions
+# We test it directly via IsAssignable compositions
 
 # True and True = True
-x1: Literal[True] if IsSub[int, object] and IsSub[str, object] else Literal[False]
+x1: Literal[True] if IsAssignable[int, object] and IsAssignable[str, object] else Literal[False]
 reveal_type(x1)  # N: Revealed type is "Literal[True]"
 
 # True and False = False
-x2: Literal[True] if IsSub[int, object] and IsSub[int, str] else Literal[False]
+x2: Literal[True] if IsAssignable[int, object] and IsAssignable[int, str] else Literal[False]
 reveal_type(x2)  # N: Revealed type is "Literal[False]"
 
 # False and True = False (short-circuit)
-x3: Literal[True] if IsSub[int, str] and IsSub[str, object] else Literal[False]
+x3: Literal[True] if IsAssignable[int, str] and IsAssignable[str, object] else Literal[False]
 reveal_type(x3)  # N: Revealed type is "Literal[False]"
 
 # False and False = False
-x4: Literal[True] if IsSub[int, str] and IsSub[str, int] else Literal[False]
+x4: Literal[True] if IsAssignable[int, str] and IsAssignable[str, int] else Literal[False]
 reveal_type(x4)  # N: Revealed type is "Literal[False]"
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
 
 [case testTypeOperatorOr]
-from typing import IsSub, Literal
+from typing import IsAssignable, Literal
 
 # _Or is the internal representation for `or` in type booleans
 
 # True or True = True
-x1: Literal[True] if IsSub[int, object] or IsSub[str, object] else Literal[False]
+x1: Literal[True] if IsAssignable[int, object] or IsAssignable[str, object] else Literal[False]
 reveal_type(x1)  # N: Revealed type is "Literal[True]"
 
 # True or False = True (short-circuit)
-x2: Literal[True] if IsSub[int, object] or IsSub[int, str] else Literal[False]
+x2: Literal[True] if IsAssignable[int, object] or IsAssignable[int, str] else Literal[False]
 reveal_type(x2)  # N: Revealed type is "Literal[True]"
 
 # False or True = True
-x3: Literal[True] if IsSub[int, str] or IsSub[str, object] else Literal[False]
+x3: Literal[True] if IsAssignable[int, str] or IsAssignable[str, object] else Literal[False]
 reveal_type(x3)  # N: Revealed type is "Literal[True]"
 
 # False or False = False
-x4: Literal[True] if IsSub[int, str] or IsSub[str, int] else Literal[False]
+x4: Literal[True] if IsAssignable[int, str] or IsAssignable[str, int] else Literal[False]
 reveal_type(x4)  # N: Revealed type is "Literal[False]"
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
 
 [case testTypeOperatorNot]
-from typing import IsSub, Literal
+from typing import IsAssignable, Literal
 
 # _Not is the internal representation for `not` in type booleans
 
 # not True = False
-x1: Literal[True] if not IsSub[int, object] else Literal[False]
+x1: Literal[True] if not IsAssignable[int, object] else Literal[False]
 reveal_type(x1)  # N: Revealed type is "Literal[False]"
 
 # not False = True
-x2: Literal[True] if not IsSub[int, str] else Literal[False]
+x2: Literal[True] if not IsAssignable[int, str] else Literal[False]
 reveal_type(x2)  # N: Revealed type is "Literal[True]"
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
 
 [case testTypeOperatorBoolCombinations]
-from typing import IsSub, Literal
+from typing import IsAssignable, Literal
 
 # Test combinations of and, or, not
 
 # not (True and False) = True
-x1: Literal[True] if not (IsSub[int, object] and IsSub[int, str]) else Literal[False]
+x1: Literal[True] if not (IsAssignable[int, object] and IsAssignable[int, str]) else Literal[False]
 reveal_type(x1)  # N: Revealed type is "Literal[True]"
 
 # (True or False) and True = True
-x2: Literal[True] if (IsSub[int, object] or IsSub[int, str]) and IsSub[str, object] else Literal[False]
+x2: Literal[True] if (IsAssignable[int, object] or IsAssignable[int, str]) and IsAssignable[str, object] else Literal[False]
 reveal_type(x2)  # N: Revealed type is "Literal[True]"
 
 # not False or False = True
-x3: Literal[True] if not IsSub[int, str] or IsSub[str, int] else Literal[False]
+x3: Literal[True] if not IsAssignable[int, str] or IsAssignable[str, int] else Literal[False]
 reveal_type(x3)  # N: Revealed type is "Literal[True]"
 
 [builtins fixtures/typelevel.pyi]
@@ -144,10 +144,10 @@ reveal_type(x3)  # N: Revealed type is "Literal[True]"
 
 
 [case testTypeOperatorTernarySyntax]
-from typing import IsSub
+from typing import IsAssignable
 
 # Ternary syntax should be converted to _Cond[condition, true_type, false_type]
-x: str if IsSub[int, object] else int
+x: str if IsAssignable[int, object] else int
 
 x = 0  # E: Incompatible types in assignment (expression has type "int", variable has type "str")
 
@@ -156,14 +156,14 @@ x = 0  # E: Incompatible types in assignment (expression has type "int", variabl
 
 [case testTypeOperatorInGenericClass]
 # Test type operators in generic class context
-from typing import Generic, TypeVar, IsSub
+from typing import Generic, TypeVar, IsAssignable
 
 T = TypeVar('T')
 
 class MyClass(Generic[T]):
-    attr: str if IsSub[T, int] else float
+    attr: str if IsAssignable[T, int] else float
 
-    def method(self, x: list[T] if IsSub[T, str] else T) -> None:
+    def method(self, x: list[T] if IsAssignable[T, str] else T) -> None:
         pass
 
 x: MyClass[int]
@@ -187,10 +187,10 @@ z.method(['0'])
 
 [case testTypeOperatorNestedTernary]
 # Test nested ternary expressions
-from typing import IsSub
+from typing import IsAssignable
 
 # Nested ternary should work
-z: int if IsSub[int, str] else (float if IsSub[float, object] else str)
+z: int if IsAssignable[int, str] else (float if IsAssignable[float, object] else str)
 z = 'xxx'  # E: Incompatible types in assignment (expression has type "str", variable has type "float")
 
 [builtins fixtures/typelevel.pyi]
@@ -198,14 +198,14 @@ z = 'xxx'  # E: Incompatible types in assignment (expression has type "str", var
 
 [case testTypeOperatorMultipleTypeArgs]
 # Test type operators with various argument types
-from typing import Generic, TypeVar, IsSub
+from typing import Generic, TypeVar, IsAssignable
 
 T = TypeVar('T')
 U = TypeVar('U')
 
 class Container(Generic[T, U]):
     # Complex conditional with multiple type variables
-    value: list[U] if IsSub[T, int] else tuple[T, U]
+    value: list[U] if IsAssignable[T, int] else tuple[T, U]
 
 x: Container[int, bool]
 reveal_type(x.value)  # N: Revealed type is "builtins.list[builtins.bool]"
@@ -218,15 +218,15 @@ reveal_type(y.value)  # N: Revealed type is "tuple[builtins.str, builtins.bool]"
 
 [case testTypeOperatorCall0]
 # Test type operators in function signatures
-from typing import TypeVar, IsSub
+from typing import TypeVar, IsAssignable
 
 T = TypeVar('T')
 
 # XXX: resolving this seems basically impossible!!
 def process(
-    x: bytes if IsSub[T, str] else T,
-    y: str if IsSub[T, int] else float
-) -> int if IsSub[T, list[object]] else str:
+    x: bytes if IsAssignable[T, str] else T,
+    y: str if IsAssignable[T, int] else float
+) -> int if IsAssignable[T, list[object]] else str:
     ...
 
 [builtins fixtures/typelevel.pyi]
@@ -235,9 +235,9 @@ def process(
 [case testTypeOperatorCall1]
 # flags: --python-version 3.14
 # Test type operators in function signatures
-from typing import IsSub
+from typing import IsAssignable
 
-def process[T](x: T) -> IsSub[T, str]:
+def process[T](x: T) -> IsAssignable[T, str]:
     ...
 
 reveal_type(process(0))  # N: Revealed type is "Literal[False]"
@@ -251,9 +251,9 @@ reveal_type(process('test'))  # N: Revealed type is "Literal[True]"
 
 # Test a type operator in an *argument*, but one that should be resolvable
 # No sweat!!
-from typing import Callable, IsSub, Literal
+from typing import Callable, IsAssignable, Literal
 
-def process[T](x: T, y: IsSub[T, str]) -> None:
+def process[T](x: T, y: IsAssignable[T, str]) -> None:
     ...
 
 process(0, False)
@@ -262,8 +262,8 @@ process('test', False)  # E: Argument 2 to "process" has incompatible type "Lite
 process('test', True)
 
 x0: Callable[[int, Literal[False]], None] = process
-x1: Callable[[int, Literal[True]], None] = process  # E: Incompatible types in assignment (expression has type "Callable[[T, typing.IsSub[T, str]], None]", variable has type "Callable[[int, Literal[True]], None]")
-x2: Callable[[str, Literal[False]], None] = process  # E: Incompatible types in assignment (expression has type "Callable[[T, typing.IsSub[T, str]], None]", variable has type "Callable[[str, Literal[False]], None]")
+x1: Callable[[int, Literal[True]], None] = process  # E: Incompatible types in assignment (expression has type "Callable[[T, typing.IsAssignable[T, str]], None]", variable has type "Callable[[int, Literal[True]], None]")
+x2: Callable[[str, Literal[False]], None] = process  # E: Incompatible types in assignment (expression has type "Callable[[T, typing.IsAssignable[T, str]], None]", variable has type "Callable[[str, Literal[False]], None]")
 x3: Callable[[str, Literal[True]], None] = process
 
 
@@ -275,9 +275,9 @@ x3: Callable[[str, Literal[True]], None] = process
 
 # Test a type operator in an *argument*, but one that should be resolvable
 # No sweat!!
-from typing import Callable, IsSub, Literal
+from typing import Callable, IsAssignable, Literal
 
-def process[T](x: IsSub[T, str], y: T) -> None:
+def process[T](x: IsAssignable[T, str], y: T) -> None:
     ...
 
 process(False, 0)
@@ -286,11 +286,11 @@ process(False, 'test')  # E: Argument 1 to "process" has incompatible type "Lite
 process(True, 'test')
 
 x0: Callable[[Literal[False], int], None] = process
-x1: Callable[[Literal[True], int], None] = process  # E: Incompatible types in assignment (expression has type "Callable[[typing.IsSub[T, str], T], None]", variable has type "Callable[[Literal[True], int], None]")
-x2: Callable[[Literal[False], str], None] = process  # E: Incompatible types in assignment (expression has type "Callable[[typing.IsSub[T, str], T], None]", variable has type "Callable[[Literal[False], str], None]")
+x1: Callable[[Literal[True], int], None] = process  # E: Incompatible types in assignment (expression has type "Callable[[typing.IsAssignable[T, str], T], None]", variable has type "Callable[[Literal[True], int], None]")
+x2: Callable[[Literal[False], str], None] = process  # E: Incompatible types in assignment (expression has type "Callable[[typing.IsAssignable[T, str], T], None]", variable has type "Callable[[Literal[False], str], None]")
 x3: Callable[[Literal[True], str], None] = process
 
-reveal_type(process)  # N: Revealed type is "def [T] (x: typing.IsSub[T`-1, builtins.str], y: T`-1)"
+reveal_type(process)  # N: Revealed type is "def [T] (x: typing.IsAssignable[T`-1, builtins.str], y: T`-1)"
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
@@ -298,10 +298,10 @@ reveal_type(process)  # N: Revealed type is "def [T] (x: typing.IsSub[T`-1, buil
 [case testTypeOperatorInTypeAlias]
 # flags: --python-version 3.14
 # Test type operators in type aliases (using concrete types to avoid unbound typevar issues)
-from typing import IsSub
+from typing import IsAssignable
 
 # Type alias using _Cond with concrete types
-type ConditionalType = str if IsSub[int, object] else bytes
+type ConditionalType = str if IsAssignable[int, object] else bytes
 z: ConditionalType = b'lol'  # E: Incompatible types in assignment (expression has type "bytes", variable has type "str")
 
 
@@ -311,9 +311,9 @@ z: ConditionalType = b'lol'  # E: Incompatible types in assignment (expression h
 [case testTypeOperatorGenericTypeAlias]
 # flags: --python-version 3.14
 # Test generic type alias with conditional type
-from typing import IsSub
+from typing import IsAssignable
 
-type IntOptional[T] = T | None if IsSub[T, int] else T
+type IntOptional[T] = T | None if IsAssignable[T, int] else T
 
 x0: IntOptional[int]
 reveal_type(x0)  # N: Revealed type is "builtins.int | None"
@@ -575,7 +575,7 @@ reveal_type(args)  # N: Revealed type is "tuple[builtins.int, builtins.str]"
 # flags: --python-version 3.14
 
 # Test GetArg on tuple types
-from typing import GetArg, Iterable, Literal, Sequence, IsSub, TypedDict, Protocol
+from typing import GetArg, Iterable, Literal, Sequence, IsAssignable, TypedDict, Protocol
 
 x0: GetArg[tuple[int, str, float], Iterable, Literal[0]]
 reveal_type(x0)  # N: Revealed type is "builtins.int | builtins.str | builtins.float"
@@ -688,7 +688,7 @@ reveal_type(z2)  # N: Revealed type is "Never"
 [case testTypeComprehensionBasicTy]
 # flags: --python-version 3.14
 # Test basic type comprehension
-from typing import IsSub, Iter
+from typing import IsAssignable, Iter
 
 class A[*T]:
     pass
@@ -704,7 +704,7 @@ reveal_type(f)  # N: Revealed type is "def (x: __main__.A[builtins.int, builtins
 
 [case testTypeComprehensionBasic]
 # Test basic type comprehension
-from typing import IsSub, Iter
+from typing import IsAssignable, Iter
 
 # Basic comprehension - maps over tuple elements
 def f(x: tuple[*[T for T in Iter[tuple[int, str, float]]]]) -> None:
@@ -720,10 +720,10 @@ reveal_type(z)  # N: Revealed type is "tuple[()]"
 
 [case testTypeComprehensionWithCondition]
 # Test type comprehension with filtering condition
-from typing import IsSub, Iter
+from typing import IsAssignable, Iter
 
 # Filter elements - only keep subtypes of int (int, bool)
-def f(x: tuple[*[T for T in Iter[tuple[int, str, bool, float]] if IsSub[T, int]]]) -> None:
+def f(x: tuple[*[T for T in Iter[tuple[int, str, bool, float]] if IsAssignable[T, int]]]) -> None:
     pass
 
 reveal_type(f)  # N: Revealed type is "def (x: tuple[builtins.int, builtins.bool])"
@@ -787,10 +787,10 @@ reveal_type(x)  # N: Revealed type is "tuple[Literal['A'], Literal['B'], Literal
 [case testTypeOperatorSubType0]
 # flags: --python-version 3.14
 
-from typing import IsSub
+from typing import IsAssignable
 
-def process[T](x: IsSub[T, str], y: IsSub[T, int]) -> None:
-    x = y  # E: Incompatible types in assignment (expression has type "typing.IsSub[T, int]", variable has type "typing.IsSub[T, str]")
+def process[T](x: IsAssignable[T, str], y: IsAssignable[T, int]) -> None:
+    x = y  # E: Incompatible types in assignment (expression has type "typing.IsAssignable[T, int]", variable has type "typing.IsAssignable[T, str]")
 
 
 [builtins fixtures/typelevel.pyi]
@@ -799,10 +799,10 @@ def process[T](x: IsSub[T, str], y: IsSub[T, int]) -> None:
 [case testTypeOperatorSubType1]
 # flags: --python-version 3.14
 
-from typing import Callable, IsSub, Literal
+from typing import Callable, IsAssignable, Literal
 
 class A:
-    def process[T](self, x: IsSub[T, str], y: T) -> None:
+    def process[T](self, x: IsAssignable[T, str], y: T) -> None:
         ...
 
 
@@ -811,18 +811,18 @@ class B(A):
 
 
 class C(A):
-    def process[T](self, x: IsSub[T, str], y: T) -> None:
+    def process[T](self, x: IsAssignable[T, str], y: T) -> None:
         ...
 
 class D(A):
-    def process[T](self, x: IsSub[T, int], y: T) -> None:  # E: Argument 1 of "process" is incompatible with supertype "A"; supertype defines the argument type as "typing.IsSub[T, str]" \
+    def process[T](self, x: IsAssignable[T, int], y: T) -> None:  # E: Argument 1 of "process" is incompatible with supertype "A"; supertype defines the argument type as "typing.IsAssignable[T, str]" \
                                                            # N: This violates the Liskov substitution principle \
                                                            # N: See https://mypy.readthedocs.io/en/stable/common_issues.html#incompatible-overrides
         ...
 
 
 class E(A):
-    def process[T](self, x: str, y: T) -> None:  # E: Argument 1 of "process" is incompatible with supertype "A"; supertype defines the argument type as "typing.IsSub[T, str]" \
+    def process[T](self, x: str, y: T) -> None:  # E: Argument 1 of "process" is incompatible with supertype "A"; supertype defines the argument type as "typing.IsAssignable[T, str]" \
                                                  # N: This violates the Liskov substitution principle \
                                                  # N: See https://mypy.readthedocs.io/en/stable/common_issues.html#incompatible-overrides
         ...
@@ -834,10 +834,10 @@ class E(A):
 [case testTypeOperatorSubType2]
 # flags: --python-version 3.14
 
-from typing import Callable, IsSub, Literal
+from typing import Callable, IsAssignable, Literal
 
 class A:
-    def process[T](self, y: T) -> IsSub[T, str]:
+    def process[T](self, y: T) -> IsAssignable[T, str]:
         ...
 
 
@@ -846,17 +846,17 @@ class B(A):
 
 
 class C(A):
-    def process[T](self, y: T) -> IsSub[T, str]:
+    def process[T](self, y: T) -> IsAssignable[T, str]:
         ...
 
 
 class D(A):
-    def process[T](self, y: T) -> IsSub[T, int]:  # E: Return type "typing.IsSub[T, int]" of "process" incompatible with return type "typing.IsSub[T, str]" in supertype "A"
+    def process[T](self, y: T) -> IsAssignable[T, int]:  # E: Return type "typing.IsAssignable[T, int]" of "process" incompatible with return type "typing.IsAssignable[T, str]" in supertype "A"
         ...
 
 
 class E(A):
-    def process[T](self, y: T) -> str:  # E: Return type "str" of "process" incompatible with return type "typing.IsSub[T, str]" in supertype "A"
+    def process[T](self, y: T) -> str:  # E: Return type "str" of "process" incompatible with return type "typing.IsAssignable[T, str]" in supertype "A"
         ...
 
 
@@ -867,7 +867,7 @@ class E(A):
 [case testTypeOperatorSubType3]
 # flags: --python-version 3.14
 
-from typing import Callable, IsSub, Literal, Iter
+from typing import Callable, IsAssignable, Literal, Iter
 
 class A:
     def process[Ts](self, x: Ts) -> tuple[*[t for t in Iter[Ts]]]:
@@ -899,18 +899,18 @@ class D(A):
 [case testTypeOperatorJoin1]
 # flags: --python-version 3.14
 
-from typing import Callable, IsSub
+from typing import Callable, IsAssignable
 
 
-def f0[T](x: IsSub[T, str], y: IsSub[T, str]) -> None:
+def f0[T](x: IsAssignable[T, str], y: IsAssignable[T, str]) -> None:
     z = [x, y]
-    reveal_type(z)  # N: Revealed type is "builtins.list[typing.IsSub[T`-1, builtins.str]]"
+    reveal_type(z)  # N: Revealed type is "builtins.list[typing.IsAssignable[T`-1, builtins.str]]"
 
-def f1[T](x: IsSub[T, str], y: IsSub[T, str] | None) -> None:
+def f1[T](x: IsAssignable[T, str], y: IsAssignable[T, str] | None) -> None:
     z = [x, y]
-    reveal_type(z)  # N: Revealed type is "builtins.list[typing.IsSub[T`-1, builtins.str] | None]"
+    reveal_type(z)  # N: Revealed type is "builtins.list[typing.IsAssignable[T`-1, builtins.str] | None]"
 
-def g[T](x: IsSub[T, str], y: IsSub[T, int]) -> None:
+def g[T](x: IsAssignable[T, str], y: IsAssignable[T, int]) -> None:
     z = [x, y]
     reveal_type(z)  # N: Revealed type is "builtins.list[builtins.object]"
 
@@ -922,18 +922,18 @@ def g[T](x: IsSub[T, str], y: IsSub[T, int]) -> None:
 [case testTypeOperatorMeet1]
 # flags: --python-version 3.14
 
-from typing import Callable, IsSub
+from typing import Callable, IsAssignable
 
 def g[T](
-    x: Callable[[IsSub[T, str]], None],
-    x0: Callable[[IsSub[T, str]], None],
-    y: Callable[[IsSub[T, int]], None],
+    x: Callable[[IsAssignable[T, str]], None],
+    x0: Callable[[IsAssignable[T, str]], None],
+    y: Callable[[IsAssignable[T, int]], None],
 ) -> None:
     z = [x, y]
     reveal_type(z)  # N: Revealed type is "builtins.list[builtins.function]"
 
     w = [x, x0]
-    reveal_type(w)  # N: Revealed type is "builtins.list[def (typing.IsSub[T`-1, builtins.str])]"
+    reveal_type(w)  # N: Revealed type is "builtins.list[def (typing.IsAssignable[T`-1, builtins.str])]"
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
@@ -979,14 +979,14 @@ z: Alias[bool]  # E: wrong: bool
 [typing fixtures/typing-full.pyi]
 
 [case testTypeOperatorRaiseErrorInConditional]
-from typing import RaiseError, IsSub, Literal
+from typing import RaiseError, IsAssignable, Literal
 
 # RaiseError in a conditional - error only if condition triggers it
 T = int
-x: str if IsSub[T, str] else RaiseError[Literal['T must be a str']]  # E: T must be a str
+x: str if IsAssignable[T, str] else RaiseError[Literal['T must be a str']]  # E: T must be a str
 reveal_type(x)  # N: Revealed type is "Never"
 
-y: str if IsSub[T, int] else RaiseError[Literal['T must be a int']]
+y: str if IsAssignable[T, int] else RaiseError[Literal['T must be a int']]
 reveal_type(y)  # N: Revealed type is "builtins.str"
 
 
@@ -997,9 +997,9 @@ reveal_type(y)  # N: Revealed type is "builtins.str"
 [case testTypeOperatorConditionalArg1]
 # flags: --python-version 3.14
 
-from typing import IsSub
+from typing import IsAssignable
 
-def foo[T](x: T, y: list[T] if IsSub[T, int] else T) -> T:
+def foo[T](x: T, y: list[T] if IsAssignable[T, int] else T) -> T:
     return x
 
 
@@ -1015,9 +1015,9 @@ foo('a', ['a'])  # E: Argument 2 to "foo" has incompatible type "list[str]"; exp
 [case testTypeOperatorConditionalArg2]
 # flags: --python-version 3.14
 
-from typing import IsSub
+from typing import IsAssignable
 
-def foo[T](y: list[T] if IsSub[T, int] else T, x: T) -> T:
+def foo[T](y: list[T] if IsAssignable[T, int] else T, x: T) -> T:
     return x
 
 

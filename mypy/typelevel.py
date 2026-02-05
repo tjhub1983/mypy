@@ -402,9 +402,9 @@ def _eval_iter(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
         return UninhabitedType()
 
 
-@register_operator("IsSub")
+@register_operator("IsAssignable")
 def _eval_issub(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
-    """Evaluate a type-level condition (IsSub[T, Base])."""
+    """Evaluate a type-level condition (IsAssignable[T, Base])."""
 
     if len(typ.args) != 2:
         return UninhabitedType()
@@ -423,12 +423,12 @@ def _eval_issub(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     return evaluator.literal_bool(result)
 
 
-@register_operator("Matches")
+@register_operator("IsEquivalent")
 def _eval_matches(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
-    """Evaluate Matches[T, S] - check if T and S are equivalent types.
+    """Evaluate IsEquivalent[T, S] - check if T and S are equivalent types.
 
     Returns Literal[True] if T is a subtype of S AND S is a subtype of T.
-    Equivalent to: IsSub[T, S] and IsSub[S, T]
+    Equivalent to: IsAssignable[T, S] and IsAssignable[S, T]
     """
     if len(typ.args) != 2:
         return UninhabitedType()
@@ -453,7 +453,7 @@ def _eval_bool(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     """Evaluate Bool[T] - check if T contains Literal[True].
 
     Returns Literal[True] if T is Literal[True] or a union containing Literal[True].
-    Equivalent to: IsSub[Literal[True], T] and not IsSub[T, Never]
+    Equivalent to: IsAssignable[Literal[True], T] and not IsAssignable[T, Never]
     """
     if len(typ.args) != 1:
         return UninhabitedType()

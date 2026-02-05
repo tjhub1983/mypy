@@ -487,7 +487,7 @@ class ComputedType(ProperType):
     that produces a concrete type.
 
     Subclasses:
-    - TypeOperatorType: e.g., GetArg[T, Base, 0], Members[T], _Cond[IsSub[T, Base], X, Y]
+    - TypeOperatorType: e.g., GetArg[T, Base, 0], Members[T], _Cond[IsAssignable[T, Base], X, Y]
     - TypeForComprehension: e.g., *[Expr for x in Iter[T] if Cond]
     """
 
@@ -608,7 +608,7 @@ class TypeForComprehension(ComputedType):
         element_expr: Type,
         iter_name: str,
         iter_type: Type,  # The type being iterated (should be a tuple type)
-        conditions: list[Type],  # Each should be IsSub[...] or boolean combo
+        conditions: list[Type],  # Each should be IsAssignable[...] or boolean combo
         iter_var: TypeVarType | None = None,  # Typically populated by typeanal
         line: int = -1,
         column: int = -1,

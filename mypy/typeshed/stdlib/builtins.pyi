@@ -2237,7 +2237,7 @@ if sys.version_info >= (3, 13):
 class _Cond(Generic[_T, _T1, _T2]):
     """
     Type-level conditional expression.
-    _Cond[IsSub[T, Base], TrueType, FalseType] evaluates to TrueType if T is a subtype of Base,
+    _Cond[IsAssignable[T, Base], TrueType, FalseType] evaluates to TrueType if T is a subtype of Base,
     otherwise FalseType.
     """
 

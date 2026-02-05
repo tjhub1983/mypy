@@ -199,20 +199,20 @@ class _NewUnion(Generic[Unpack[_Ts]]):
 # --- Boolean/Conditional Operators ---
 
 @_type_operator
-class IsSub(Generic[_T, _Base]):
+class IsAssignable(Generic[_T, _Base]):
     """
-    Type-level subtype check. Evaluates to a type-level boolean.
-    Used in conditional type expressions: `_Cond[IsSub[T, Base], X, Y]`
+    Type-level assignability check. Evaluates to a type-level boolean.
+    Used in conditional type expressions: `Foo if IsAssignable[T, Base] else Bar`
     """
 
     ...
 
 @_type_operator
-class Matches(Generic[_T, _S]):
+class IsEquivalent(Generic[_T, _S]):
     """
     Type equivalence check. Returns Literal[True] if T is a subtype of S
     AND S is a subtype of T.
-    Equivalent to: IsSub[T, S] and IsSub[S, T]
+    Equivalent to: IsAssignable[T, S] and IsAssignable[S, T]
     """
 
     ...
@@ -222,7 +222,7 @@ class Bool(Generic[_T]):
     """
     Check if T contains Literal[True].
     Returns Literal[True] if T is Literal[True] or a union containing it.
-    Equivalent to: IsSub[Literal[True], T] and not IsSub[T, Never]
+    Equivalent to: IsAssignable[Literal[True], T] and not IsAssignable[T, Never]
     """
 
     ...

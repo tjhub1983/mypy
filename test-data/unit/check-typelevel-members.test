@@ -285,7 +285,7 @@ x = {'name': 'Alice', 'age': 30}
 [typing fixtures/typing-full.pyi]
 
 [case testNewTypedDictWithComprehensionFilter]
-from typing import NewTypedDict, Members, TypedDict, Iter, IsSub, GetMemberType, Literal
+from typing import NewTypedDict, Members, TypedDict, Iter, IsAssignable, GetMemberType, Literal
 
 class Person(TypedDict):
     name: str
@@ -293,7 +293,7 @@ class Person(TypedDict):
     active: bool
 
 # Filter to only string fields
-TD = NewTypedDict[*[m for m in Iter[Members[Person]] if IsSub[GetMemberType[m, Literal['typ']], str]]]
+TD = NewTypedDict[*[m for m in Iter[Members[Person]] if IsAssignable[GetMemberType[m, Literal['typ']], str]]]
 x: TD
 reveal_type(x)  # N: Revealed type is "TypedDict({'name': builtins.str})"
 x = {'name': 'Alice'}
