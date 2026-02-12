@@ -9,9 +9,12 @@ Note: Conditional types are now represented as _Cond[...] TypeOperatorType.
 
 from __future__ import annotations
 
+import functools
+import inspect
 import itertools
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
 from mypy.expandtype import expand_type, expand_type_by_instance
@@ -108,7 +111,16 @@ typelevel_ctx: Final = TypeLevelContext()
 # Registry mapping operator names (not full!) to their evaluation functions
 OperatorFunc = Callable[..., Type]
 
-_OPERATOR_EVALUATORS: dict[str, OperatorFunc] = {}
+
+@dataclass(frozen=True)
+class OperatorInfo:
+    """Metadata about a registered operator evaluator."""
+
+    func: OperatorFunc
+    expected_argc: int | None  # None for variadic
+
+
+_OPERATOR_EVALUATORS: dict[str, OperatorInfo] = {}
 
 
 EXPANSION_ANY = AnyType(TypeOfAny.expansion_stuck)
@@ -117,10 +129,24 @@ EXPANSION_OVERFLOW = AnyType(TypeOfAny.from_error)
 
 
 def register_operator(name: str) -> Callable[[OperatorFunc], OperatorFunc]:
-    """Decorator to register an operator evaluator."""
+    """Decorator to register an operator evaluator.
+
+    The function signature is inspected to determine the expected number of
+    positional arguments (excluding the keyword-only ``evaluator`` parameter).
+    If a ``*args`` parameter is found, the operator is treated as variadic.
+    """
 
     def decorator(func: OperatorFunc) -> OperatorFunc:
-        _OPERATOR_EVALUATORS[name] = func
+        # inspect.signature follows __wrapped__ set by functools.wraps,
+        # so this sees through the lift_over_unions wrapper automatically.
+        sig = inspect.signature(func)
+        argc = (
+            None
+            if any(p.kind == inspect.Parameter.VAR_POSITIONAL for p in sig.parameters.values())
+            else len(sig.parameters) - 1
+        )
+
+        _OPERATOR_EVALUATORS[name] = OperatorInfo(func=func, expected_argc=argc)
         return func
 
     return decorator
@@ -134,32 +160,29 @@ def lift_over_unions(func: OperatorFunc) -> OperatorFunc:
 
     For example, Concat[Literal['a'] | Literal['b'], Literal['c']]
     becomes Literal['ac'] | Literal['bc'].
+
+    Works at the unpacked-args level: the wrapped function receives individual
+    ``Type`` positional arguments plus a keyword-only ``evaluator``.
     """
 
-    def wrapper(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> Type:
-        # Expand each argument, collecting union alternatives
-        expanded_args: list[list[Type]] = []
-        for arg in typ.args:
+    @functools.wraps(func)
+    def wrapper(*args: Type, evaluator: TypeLevelEvaluator) -> Type:
+        expanded: list[list[Type]] = []
+        for arg in args:
             proper = get_proper_type(arg)
             if isinstance(proper, UnionType):
-                expanded_args.append(list(proper.items))
+                expanded.append(list(proper.items))
             else:
-                expanded_args.append([arg])
+                expanded.append([arg])
 
-        # Generate all combinations
-        combinations = list(itertools.product(*expanded_args))
+        combinations = list(itertools.product(*expanded))
 
-        # If there's only one combination, just call the function directly
         if len(combinations) == 1:
-            return func(typ, evaluator=evaluator)
+            return func(*args, evaluator=evaluator)
 
-        # Apply the operator to each combination
         results: list[Type] = []
         for combo in combinations:
-            new_typ = typ.copy_modified(args=list(combo))
-            result = func(new_typ, evaluator=evaluator)
-            # Don't include Never in unions
-            # XXX: or should we get_proper_type again??
+            result = func(*combo, evaluator=evaluator)
             if not (isinstance(result, ProperType) and isinstance(result, UninhabitedType)):
                 results.append(result)
 
@@ -183,8 +206,16 @@ class TypeLevelEvaluator:
         self.api = api
         self.ctx = ctx
         self.depth = 0
+        self._current_op: TypeOperatorType | None = None
 
         self.cache: dict[Type, Type] = {}
+
+    @property
+    def error_ctx(self) -> Context:
+        """Get the best available error context for reporting."""
+        ctx = self.ctx or self._current_op
+        assert ctx is not None, "No error context available"
+        return ctx
 
     def evaluate(self, typ: Type) -> Type:
         """Main entry point: evaluate a type to its simplified form."""
@@ -229,15 +260,23 @@ class TypeLevelEvaluator:
 
     def eval_operator(self, typ: TypeOperatorType) -> Type:
         """Evaluate a type operator by dispatching to registered handler."""
-        evaluator = _OPERATOR_EVALUATORS.get(typ.type.name)
+        name = typ.type.name
 
-        if evaluator is None:
-            # print("NO EVALUATOR", fullname)
-
-            # Unknown operator - return Any for now
+        info = _OPERATOR_EVALUATORS.get(name)
+        if info is None:
             return EXPANSION_ANY
 
-        return evaluator(typ, evaluator=self)
+        old_op = self._current_op
+        self._current_op = typ
+        try:
+            args = typ.args
+            if info.expected_argc is None:
+                args = self.flatten_args(args)
+            elif len(args) != info.expected_argc:
+                return UninhabitedType()
+            return info.func(*args, evaluator=self)
+        finally:
+            self._current_op = old_op
 
     # --- Type construction helpers ---
 
@@ -310,13 +349,10 @@ def _call_by_value(evaluator: TypeLevelEvaluator, typ: Type) -> Type:
 
 
 @register_operator("_Cond")
-def _eval_cond(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> Type:
+def _eval_cond(
+    condition: Type, true_type: Type, false_type: Type, *, evaluator: TypeLevelEvaluator
+) -> Type:
     """Evaluate _Cond[condition, TrueType, FalseType]."""
-
-    if len(typ.args) != 3:
-        return UninhabitedType()
-
-    condition, true_type, false_type = typ.args
     result = extract_literal_bool(evaluator.eval_proper(condition))
 
     if result is True:
@@ -330,19 +366,16 @@ def _eval_cond(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> Type:
 
 
 @register_operator("_And")
-def _eval_and(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> Type:
+def _eval_and(left_arg: Type, right_arg: Type, *, evaluator: TypeLevelEvaluator) -> Type:
     """Evaluate _And[cond1, cond2] - logical AND of type booleans."""
-    if len(typ.args) != 2:
-        return UninhabitedType()
-
-    left = extract_literal_bool(evaluator.eval_proper(typ.args[0]))
+    left = extract_literal_bool(evaluator.eval_proper(left_arg))
     if left is False:
         # Short-circuit: False and X = False
         return evaluator.literal_bool(False)
     if left is None:
         return UninhabitedType()
 
-    right = extract_literal_bool(evaluator.eval_proper(typ.args[1]))
+    right = extract_literal_bool(evaluator.eval_proper(right_arg))
     if right is None:
         return UninhabitedType()
 
@@ -350,19 +383,16 @@ def _eval_and(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> Type:
 
 
 @register_operator("_Or")
-def _eval_or(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> Type:
+def _eval_or(left_arg: Type, right_arg: Type, *, evaluator: TypeLevelEvaluator) -> Type:
     """Evaluate _Or[cond1, cond2] - logical OR of type booleans."""
-    if len(typ.args) != 2:
-        return UninhabitedType()
-
-    left = extract_literal_bool(evaluator.eval_proper(typ.args[0]))
+    left = extract_literal_bool(evaluator.eval_proper(left_arg))
     if left is True:
         # Short-circuit: True or X = True
         return evaluator.literal_bool(True)
     if left is None:
         return UninhabitedType()
 
-    right = extract_literal_bool(evaluator.eval_proper(typ.args[1]))
+    right = extract_literal_bool(evaluator.eval_proper(right_arg))
     if right is None:
         return UninhabitedType()
 
@@ -370,12 +400,9 @@ def _eval_or(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> Type:
 
 
 @register_operator("_Not")
-def _eval_not(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> Type:
+def _eval_not(arg: Type, *, evaluator: TypeLevelEvaluator) -> Type:
     """Evaluate _Not[cond] - logical NOT of a type boolean."""
-    if len(typ.args) != 1:
-        return UninhabitedType()
-
-    result = extract_literal_bool(evaluator.eval_proper(typ.args[0]))
+    result = extract_literal_bool(evaluator.eval_proper(arg))
     if result is None:
         return UninhabitedType()
 
@@ -383,28 +410,21 @@ def _eval_not(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> Type:
 
 
 @register_operator("_DictEntry")
-def _eval_dict_entry(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> Type:
+def _eval_dict_entry(name_type: Type, value_type: Type, *, evaluator: TypeLevelEvaluator) -> Type:
     """Evaluate _DictEntry[name, typ] -> Member[name, typ, Never, Never, Never].
 
     This is the internal type operator for dict comprehension syntax in type context.
     {k: v for x in foo} desugars to *[_DictEntry[k, v] for x in foo].
     """
-    if len(typ.args) != 2:
-        return UninhabitedType()
-
-    name_type, value_type = typ.args
     member_info = evaluator.get_typemap_type("Member")
     never = UninhabitedType()
     return Instance(member_info.type, [name_type, value_type, never, never, never])
 
 
 @register_operator("Iter")
-def _eval_iter(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> Type:
+def _eval_iter(arg: Type, *, evaluator: TypeLevelEvaluator) -> Type:
     """Evaluate a type-level iterator (Iter[T])."""
-    if len(typ.args) != 1:
-        return UninhabitedType()  # ???
-
-    target = evaluator.eval_proper(typ.args[0])
+    target = evaluator.eval_proper(arg)
     if isinstance(target, TupleType):
         return target
     else:
@@ -412,14 +432,8 @@ def _eval_iter(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> Type:
 
 
 @register_operator("IsAssignable")
-def _eval_issub(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> Type:
+def _eval_issub(lhs: Type, rhs: Type, *, evaluator: TypeLevelEvaluator) -> Type:
     """Evaluate a type-level condition (IsAssignable[T, Base])."""
-
-    if len(typ.args) != 2:
-        return UninhabitedType()
-
-    lhs, rhs = typ.args
-
     left_proper = evaluator.eval_proper(lhs)
     right_proper = evaluator.eval_proper(rhs)
 
@@ -433,17 +447,12 @@ def _eval_issub(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> Type
 
 
 @register_operator("IsEquivalent")
-def _eval_matches(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> Type:
+def _eval_matches(lhs: Type, rhs: Type, *, evaluator: TypeLevelEvaluator) -> Type:
     """Evaluate IsEquivalent[T, S] - check if T and S are equivalent types.
 
     Returns Literal[True] if T is a subtype of S AND S is a subtype of T.
     Equivalent to: IsAssignable[T, S] and IsAssignable[S, T]
     """
-    if len(typ.args) != 2:
-        return UninhabitedType()
-
-    lhs, rhs = typ.args
-
     left_proper = evaluator.eval_proper(lhs)
     right_proper = evaluator.eval_proper(rhs)
 
@@ -458,16 +467,13 @@ def _eval_matches(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> Ty
 
 
 @register_operator("Bool")
-def _eval_bool(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> Type:
+def _eval_bool(arg: Type, *, evaluator: TypeLevelEvaluator) -> Type:
     """Evaluate Bool[T] - check if T contains Literal[True].
 
     Returns Literal[True] if T is Literal[True] or a union containing Literal[True].
     Equivalent to: IsAssignable[Literal[True], T] and not IsAssignable[T, Never]
     """
-    if len(typ.args) != 1:
-        return UninhabitedType()
-
-    arg_proper = evaluator.eval_proper(typ.args[0])
+    arg_proper = evaluator.eval_proper(arg)
 
     # Check if Literal[True] is a subtype of arg (i.e., arg contains True)
     # and arg is not Never
@@ -568,18 +574,17 @@ def _get_args(evaluator: TypeLevelEvaluator, target: Type, base: Type) -> Sequen
 
 @register_operator("GetArg")
 @lift_over_unions
-def _eval_get_arg(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> Type:
+def _eval_get_arg(
+    target: Type, base: Type, index_arg: Type, *, evaluator: TypeLevelEvaluator
+) -> Type:
     """Evaluate GetArg[T, Base, Idx] - get type argument at index from T as Base."""
-    if len(typ.args) != 3:
-        return UninhabitedType()
-
-    args = _get_args(evaluator, typ.args[0], typ.args[1])
+    args = _get_args(evaluator, target, base)
 
     if args is None:
         return UninhabitedType()
 
     # Extract index as int
-    index = extract_literal_int(evaluator.eval_proper(typ.args[2]))
+    index = extract_literal_int(evaluator.eval_proper(index_arg))
     if index is None:
         return UninhabitedType()  # Can't evaluate without literal index
 
@@ -593,12 +598,9 @@ def _eval_get_arg(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> Ty
 
 @register_operator("GetArgs")
 @lift_over_unions
-def _eval_get_args(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> Type:
+def _eval_get_args(target: Type, base: Type, *, evaluator: TypeLevelEvaluator) -> Type:
     """Evaluate GetArgs[T, Base] -> tuple of all type args from T as Base."""
-    if len(typ.args) != 2:
-        return UninhabitedType()
-
-    args = _get_args(evaluator, typ.args[0], typ.args[1])
+    args = _get_args(evaluator, target, base)
 
     if args is None:
         return UninhabitedType()
@@ -606,12 +608,9 @@ def _eval_get_args(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> T
 
 
 @register_operator("FromUnion")
-def _eval_from_union(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> Type:
+def _eval_from_union(arg: Type, *, evaluator: TypeLevelEvaluator) -> Type:
     """Evaluate FromUnion[T] -> tuple of union elements."""
-    if len(typ.args) != 1:
-        return UninhabitedType()
-
-    target = evaluator.eval_proper(typ.args[0])
+    target = evaluator.eval_proper(arg)
 
     if isinstance(target, UnionType):
         return evaluator.tuple_type(list(target.items))
@@ -621,21 +620,19 @@ def _eval_from_union(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) ->
 
 
 @register_operator("_NewUnion")
-def _eval_new_union(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> Type:
+def _eval_new_union(*args: Type, evaluator: TypeLevelEvaluator) -> Type:
     """Evaluate _NewUnion[*Ts] -> union of all type arguments."""
-    args = evaluator.flatten_args(typ.args)
-    return make_simplified_union(args)
+    return make_simplified_union(list(args))
 
 
 @register_operator("GetMemberType")
 @lift_over_unions
-def _eval_get_member_type(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> Type:
+def _eval_get_member_type(
+    target_arg: Type, name_arg: Type, *, evaluator: TypeLevelEvaluator
+) -> Type:
     """Evaluate GetMemberType[T, Name] - get attribute type from T."""
-    if len(typ.args) != 2:
-        return UninhabitedType()
-
-    target = evaluator.eval_proper(typ.args[0])
-    name_type = evaluator.eval_proper(typ.args[1])
+    target = evaluator.eval_proper(target_arg)
+    name_type = evaluator.eval_proper(name_arg)
 
     name = extract_literal_string(name_type)
     if name is None:
@@ -658,41 +655,41 @@ def _eval_get_member_type(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluato
 
 
 @register_operator("_TypeGetAttr")
-def _eval_type_get_attr(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> Type:
+def _eval_type_get_attr(
+    target_arg: Type, name_arg: Type, *, evaluator: TypeLevelEvaluator
+) -> Type:
     """Evaluate _TypeGetAttr[T, Name] - get attribute from a Member.
 
     Internal operator for dot notation: m.attr desugars to _TypeGetAttr[m, Literal["attr"]].
     Unlike GetMemberType, this only works on Member instances, not arbitrary types.
     """
-    if len(typ.args) != 2:
-        return UninhabitedType()
-
-    target = evaluator.eval_proper(typ.args[0])
+    target = evaluator.eval_proper(target_arg)
 
     member_info = evaluator.get_typemap_type("Member")
     if not isinstance(target, Instance) or target.type != member_info.type:
-        name_type = evaluator.eval_proper(typ.args[1])
+        name_type = evaluator.eval_proper(name_arg)
         name = extract_literal_string(name_type)
-        ctx = evaluator.ctx or typ
         evaluator.api.fail(
-            f"Dot notation .{name} requires a Member type, got {target}", ctx, serious=True
+            f"Dot notation .{name} requires a Member type, got {target}",
+            evaluator.error_ctx,
+            serious=True,
         )
         return UninhabitedType()
 
-    return _eval_get_member_type(typ, evaluator=evaluator)
+    # Direct call bypasses union lifting, which is correct for Member access
+    return _eval_get_member_type(target_arg, name_arg, evaluator=evaluator)
 
 
 @register_operator("Slice")
 @lift_over_unions
-def _eval_slice(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> Type:
+def _eval_slice(
+    target_arg: Type, start_arg: Type, end_arg: Type, *, evaluator: TypeLevelEvaluator
+) -> Type:
     """Evaluate Slice[S, Start, End] - slice a literal string or tuple type."""
-    if len(typ.args) != 3:
-        return UninhabitedType()
-
-    target = evaluator.eval_proper(typ.args[0])
+    target = evaluator.eval_proper(target_arg)
 
     # Handle start - can be int or None
-    start_type = evaluator.eval_proper(typ.args[1])
+    start_type = evaluator.eval_proper(start_arg)
     if isinstance(start_type, NoneType):
         start: int | None = None
     else:
@@ -701,7 +698,7 @@ def _eval_slice(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> Type
             return UninhabitedType()
 
     # Handle end - can be int or None
-    end_type = evaluator.eval_proper(typ.args[2])
+    end_type = evaluator.eval_proper(end_arg)
     if isinstance(end_type, NoneType):
         end: int | None = None
     else:
@@ -725,13 +722,10 @@ def _eval_slice(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> Type
 
 @register_operator("Concat")
 @lift_over_unions
-def _eval_concat(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> Type:
+def _eval_concat(left_arg: Type, right_arg: Type, *, evaluator: TypeLevelEvaluator) -> Type:
     """Evaluate Concat[S1, S2] - concatenate two literal strings."""
-    if len(typ.args) != 2:
-        return UninhabitedType()
-
-    left = extract_literal_string(evaluator.eval_proper(typ.args[0]))
-    right = extract_literal_string(evaluator.eval_proper(typ.args[1]))
+    left = extract_literal_string(evaluator.eval_proper(left_arg))
+    right = extract_literal_string(evaluator.eval_proper(right_arg))
 
     if left is not None and right is not None:
         return evaluator.literal_str(left + right)
@@ -741,12 +735,9 @@ def _eval_concat(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> Typ
 
 @register_operator("Uppercase")
 @lift_over_unions
-def _eval_uppercase(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> Type:
+def _eval_uppercase(arg: Type, *, evaluator: TypeLevelEvaluator) -> Type:
     """Evaluate Uppercase[S] - convert literal string to uppercase."""
-    if len(typ.args) != 1:
-        return UninhabitedType()
-
-    s = extract_literal_string(evaluator.eval_proper(typ.args[0]))
+    s = extract_literal_string(evaluator.eval_proper(arg))
     if s is not None:
         return evaluator.literal_str(s.upper())
 
@@ -755,12 +746,9 @@ def _eval_uppercase(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> 
 
 @register_operator("Lowercase")
 @lift_over_unions
-def _eval_lowercase(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> Type:
+def _eval_lowercase(arg: Type, *, evaluator: TypeLevelEvaluator) -> Type:
     """Evaluate Lowercase[S] - convert literal string to lowercase."""
-    if len(typ.args) != 1:
-        return UninhabitedType()
-
-    s = extract_literal_string(evaluator.eval_proper(typ.args[0]))
+    s = extract_literal_string(evaluator.eval_proper(arg))
     if s is not None:
         return evaluator.literal_str(s.lower())
 
@@ -769,12 +757,9 @@ def _eval_lowercase(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> 
 
 @register_operator("Capitalize")
 @lift_over_unions
-def _eval_capitalize(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> Type:
+def _eval_capitalize(arg: Type, *, evaluator: TypeLevelEvaluator) -> Type:
     """Evaluate Capitalize[S] - capitalize first character of literal string."""
-    if len(typ.args) != 1:
-        return UninhabitedType()
-
-    s = extract_literal_string(evaluator.eval_proper(typ.args[0]))
+    s = extract_literal_string(evaluator.eval_proper(arg))
     if s is not None:
         return evaluator.literal_str(s.capitalize())
 
@@ -783,12 +768,9 @@ def _eval_capitalize(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) ->
 
 @register_operator("Uncapitalize")
 @lift_over_unions
-def _eval_uncapitalize(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> Type:
+def _eval_uncapitalize(arg: Type, *, evaluator: TypeLevelEvaluator) -> Type:
     """Evaluate Uncapitalize[S] - lowercase first character of literal string."""
-    if len(typ.args) != 1:
-        return UninhabitedType()
-
-    s = extract_literal_string(evaluator.eval_proper(typ.args[0]))
+    s = extract_literal_string(evaluator.eval_proper(arg))
     if s is not None:
         result = s[0].lower() + s[1:] if s else s
         return evaluator.literal_str(result)
@@ -798,26 +780,26 @@ def _eval_uncapitalize(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) 
 
 @register_operator("Members")
 @lift_over_unions
-def _eval_members(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> Type:
+def _eval_members(target: Type, *, evaluator: TypeLevelEvaluator) -> Type:
     """Evaluate Members[T] -> tuple of Member types for all members of T.
 
     Includes methods, class variables, and instance attributes.
     """
-    return _eval_members_impl(typ, evaluator=evaluator, attrs_only=False)
+    return _eval_members_impl(target, evaluator=evaluator, attrs_only=False)
 
 
 @register_operator("Attrs")
 @lift_over_unions
-def _eval_attrs(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> Type:
+def _eval_attrs(target: Type, *, evaluator: TypeLevelEvaluator) -> Type:
     """Evaluate Attrs[T] -> tuple of Member types for annotated attributes only.
 
     Excludes methods but includes ClassVar members.
     """
-    return _eval_members_impl(typ, evaluator=evaluator, attrs_only=True)
+    return _eval_members_impl(target, evaluator=evaluator, attrs_only=True)
 
 
 def _eval_members_impl(
-    typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator, attrs_only: bool
+    target_arg: Type, *, evaluator: TypeLevelEvaluator, attrs_only: bool
 ) -> Type:
     """Common implementation for Members and Attrs operators.
 
@@ -825,10 +807,7 @@ def _eval_members_impl(
         attrs_only: If True, filter to attributes only (excludes methods).
                     If False, include all members.
     """
-    if len(typ.args) != 1:
-        return UninhabitedType()
-
-    target = evaluator.eval_proper(typ.args[0])
+    target = evaluator.eval_proper(target_arg)
 
     # Get the Member TypeInfo
     member_info = evaluator.get_typemap_type("Member")
@@ -960,7 +939,7 @@ def create_member_type(
 
 
 @register_operator("NewTypedDict")
-def _eval_new_typeddict(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> Type:
+def _eval_new_typeddict(*args: Type, evaluator: TypeLevelEvaluator) -> Type:
     """Evaluate NewTypedDict[*Members] -> create a new TypedDict from Member types.
 
     This is the inverse of Members[TypedDict].
@@ -972,7 +951,7 @@ def _eval_new_typeddict(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator)
     required_keys: set[str] = set()
     readonly_keys: set[str] = set()
 
-    for arg in evaluator.flatten_args(typ.args):
+    for arg in args:
         arg = get_proper_type(arg)
 
         # Each argument should be a Member[name, typ, quals, init, definer]
@@ -1047,7 +1026,7 @@ def _proto_str(map: dict[str, tuple[Type, Type, bool, bool]]) -> str:
 
 
 @register_operator("NewProtocol")
-def _eval_new_protocol(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> Type:
+def _eval_new_protocol(*args: Type, evaluator: TypeLevelEvaluator) -> Type:
     """Evaluate NewProtocol[*Members] -> create a new structural protocol type.
 
     This creates a synthetic protocol class with members defined by the Member arguments.
@@ -1071,7 +1050,7 @@ def _eval_new_protocol(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) 
         {}
     )  # name -> (type, init_type, is_classvar, is_final)
 
-    for arg in evaluator.flatten_args(typ.args):
+    for arg in args:
         arg = get_proper_type(arg)
 
         # Each argument should be a Member[name, typ, quals, init, definer]
@@ -1155,12 +1134,9 @@ def _eval_new_protocol(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) 
 
 @register_operator("Length")
 @lift_over_unions
-def _eval_length(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> Type:
+def _eval_length(arg: Type, *, evaluator: TypeLevelEvaluator) -> Type:
     """Evaluate Length[T] -> Literal[int] for tuple length."""
-    if len(typ.args) != 1:
-        return UninhabitedType()
-
-    target = evaluator.eval_proper(typ.args[0])
+    target = evaluator.eval_proper(arg)
 
     if isinstance(target, TupleType):
         # Need to evaluate the elements before we inspect them
@@ -1178,7 +1154,7 @@ def _eval_length(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> Typ
 
 
 @register_operator("RaiseError")
-def _eval_raise_error(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -> Type:
+def _eval_raise_error(*args: Type, evaluator: TypeLevelEvaluator) -> Type:
     """Evaluate RaiseError[S] -> emit a type error with message S.
 
     RaiseError is used to emit custom type errors during type-level computation.
@@ -1186,7 +1162,6 @@ def _eval_raise_error(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -
     Returns Never after emitting the error.
     """
 
-    args = evaluator.flatten_args(typ.args)
     if not args:
         msg = "RaiseError called without arguments!"
     else:
@@ -1196,10 +1171,9 @@ def _eval_raise_error(typ: TypeOperatorType, *, evaluator: TypeLevelEvaluator) -
         msg += ": " + ", ".join(str(t) for t in args[1:])
 
     # TODO: We could also print a stack trace?
-    ctx = evaluator.ctx or typ
     # Use serious=True to bypass in_checked_function() check which requires
     # self.options to be set on the SemanticAnalyzer
-    evaluator.api.fail(msg, ctx, serious=True)
+    evaluator.api.fail(msg, evaluator.error_ctx, serious=True)
 
     return UninhabitedType()
 
