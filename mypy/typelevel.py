@@ -665,13 +665,27 @@ def _eval_get_member_type(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) 
 
 
 @register_operator("_TypeGetAttr")
-@lift_over_unions
 def _eval_type_get_attr(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
-    """Evaluate _TypeGetAttr[T, Name] - get attribute type from T.
+    """Evaluate _TypeGetAttr[T, Name] - get attribute from a Member.
 
-    Internal operator for dot notation: T.attr desugars to _TypeGetAttr[T, Literal["attr"]].
-    Semantically equivalent to GetMemberType.
+    Internal operator for dot notation: m.attr desugars to _TypeGetAttr[m, Literal["attr"]].
+    Unlike GetMemberType, this only works on Member instances, not arbitrary types.
     """
+    if len(typ.args) != 2:
+        return UninhabitedType()
+
+    target = evaluator.eval_proper(typ.args[0])
+
+    member_info = evaluator.get_typemap_type("Member")
+    if not isinstance(target, Instance) or target.type != member_info.type:
+        name_type = evaluator.eval_proper(typ.args[1])
+        name = extract_literal_string(name_type)
+        ctx = evaluator.ctx or typ
+        evaluator.api.fail(
+            f"Dot notation .{name} requires a Member type, got {target}", ctx, serious=True
+        )
+        return UninhabitedType()
+
     return _eval_get_member_type(evaluator, typ)
 
 
