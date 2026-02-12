@@ -6828,6 +6828,9 @@ class SemanticAnalyzer(
                     # See https://github.com/python/mypy/pull/13468
                     if isinstance(node, ParamSpecExpr) and part in ("args", "kwargs"):
                         return None
+                    # Allow attribute access on type variables in type expression context
+                    if isinstance(node, TypeVarExpr) and self.allow_unbound_tvars:
+                        return None
                     # Lookup through invalid node, such as variable or function
                     nextsym = None
                 if not nextsym or nextsym.module_hidden:

@@ -648,6 +648,17 @@ def _eval_get_member_type(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) 
     return UninhabitedType()
 
 
+@register_operator("_TypeGetAttr")
+@lift_over_unions
+def _eval_type_get_attr(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """Evaluate _TypeGetAttr[T, Name] - get attribute type from T.
+
+    Internal operator for dot notation: T.attr desugars to _TypeGetAttr[T, Literal["attr"]].
+    Semantically equivalent to GetMemberType.
+    """
+    return _eval_get_member_type(evaluator, typ)
+
+
 @register_operator("Slice")
 @lift_over_unions
 def _eval_slice(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:

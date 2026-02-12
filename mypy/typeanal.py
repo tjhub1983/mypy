@@ -300,7 +300,7 @@ class TypeAnalyser(SyntheticTypeVisitor[Type], TypeAnalyzerPluginInterface):
         )
 
     def visit_unbound_type_nonoptional(self, t: UnboundType, defining_literal: bool) -> Type:
-        sym = self.lookup_qualified(t.name, t)
+        sym = self.lookup_qualified(t.name, t, suppress_errors="." in t.name)
         param_spec_name = None
         if t.name.endswith((".args", ".kwargs")):
             param_spec_name = t.name.rsplit(".", 1)[0]
@@ -526,6 +526,32 @@ class TypeAnalyser(SyntheticTypeVisitor[Type], TypeAnalyzerPluginInterface):
             else:
                 return self.analyze_unbound_type_without_type_info(t, sym, defining_literal)
         else:  # sym is None
+            # Try dot notation for type-level attribute access: T.attr -> _TypeGetAttr[T, Literal["attr"]]
+            # Only applies when the prefix is a type variable (not a module, class, etc.)
+            if "." in t.name:
+                prefix, attr = t.name.rsplit(".", 1)
+                prefix_sym = self.lookup_qualified(prefix, t, suppress_errors=True)
+                if prefix_sym is not None and isinstance(prefix_sym.node, TypeVarExpr):
+                    operator_sym = self.api.lookup_fully_qualified_or_none("typing._TypeGetAttr")
+                    if operator_sym and isinstance(operator_sym.node, TypeInfo):
+                        prefix_type = self.anal_type(
+                            UnboundType(prefix, t.args, line=t.line, column=t.column)
+                        )
+                        attr_literal = LiteralType(
+                            attr, self.named_type("builtins.str"), line=t.line, column=t.column
+                        )
+                        fallback = self.named_type("builtins.object")
+                        return TypeOperatorType(
+                            operator_sym.node,
+                            [prefix_type, attr_literal],
+                            fallback,
+                            t.line,
+                            t.column,
+                        )
+                else:
+                    # Prefix is not a type variable — re-issue the original lookup
+                    # without suppressed errors so the proper error is generated
+                    self.lookup_qualified(t.name, t)
             return AnyType(TypeOfAny.special_form)
 
     def pack_paramspec_args(self, an_args: Sequence[Type], empty_tuple_index: bool) -> list[Type]:
@@ -2706,6 +2732,18 @@ class FindTypeVarVisitor(SyntheticTypeVisitor[None]):
         # really don't want to bother to put them in the symbol table.
         if name in self.internal_vars:
             return
+
+        # Skip type-level attribute access (T.attr, m.name) where the prefix
+        # is a comprehension variable or a type variable — these are handled
+        # as _TypeGetAttr during type analysis, not as qualified name lookups.
+        if "." in name:
+            prefix = name.rsplit(".", 1)[0]
+            if prefix in self.internal_vars:
+                return
+            prefix_node = self.api.lookup_qualified(prefix, t, suppress_errors=True)
+            if prefix_node and isinstance(prefix_node.node, TypeVarExpr):
+                name = prefix
+
         node = self.api.lookup_qualified(name, t)
         if node and node.fullname in SELF_TYPE_NAMES:
             self.has_self_type = True

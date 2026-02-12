@@ -366,3 +366,64 @@ reveal_type(x)  # N: Revealed type is "tuple[Literal['default'], Literal['lol@lo
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
+
+[case testDotNotationMemberAccess]
+# flags: --python-version 3.12
+# Test dot notation for Member component access
+from typing import Members, TypedDict, Iter, Member, Literal, Never
+
+class Person(TypedDict):
+    name: str
+    age: int
+
+m: Members[Person]
+reveal_type(m)  # N: Revealed type is "tuple[typing.Member[Literal['name'], builtins.str, Never, Never, Never], typing.Member[Literal['age'], builtins.int, Never, Never, Never]]"
+
+# Use dot notation to access Member fields
+type Names = tuple[*[T.name for T in Iter[Members[Person]]]]
+x: Names
+reveal_type(x)  # N: Revealed type is "tuple[Literal['name'], Literal['age']]"
+
+type Types = tuple[*[T.typ for T in Iter[Members[Person]]]]
+y: Types
+reveal_type(y)  # N: Revealed type is "tuple[builtins.str, builtins.int]"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testDotNotationNewTypedDict]
+# flags: --python-version 3.12
+# Test dot notation in dict comprehension with NewTypedDict
+from typing import NewTypedDict, Members, TypedDict, Iter
+
+class Person(TypedDict):
+    name: str
+    age: int
+
+# Use dot notation in dict comprehension
+type TD = NewTypedDict[{m.name: m.typ for m in Iter[Members[Person]]}]
+x: TD
+reveal_type(x)  # N: Revealed type is "TypedDict({'name': builtins.str, 'age': builtins.int})"
+x = {'name': 'Alice', 'age': 30}
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testDotNotationWithCondition]
+# flags: --python-version 3.12
+# Test dot notation with comprehension condition
+from typing import NewTypedDict, Members, TypedDict, Iter, IsAssignable
+
+class Person(TypedDict):
+    name: str
+    age: int
+    active: bool
+
+# Filter to only string fields using dot notation
+type TD = NewTypedDict[{m.name: m.typ for m in Iter[Members[Person]] if IsAssignable[m.typ, str]}]
+x: TD
+reveal_type(x)  # N: Revealed type is "TypedDict({'name': builtins.str})"
+x = {'name': 'Alice'}
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]

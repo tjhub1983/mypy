@@ -2376,9 +2376,15 @@ reveal_type(creat_members)
 
 upd_types: tuple[*[typing.GetType[p] for p in typing.Iter[typing.Members[HeroUpdate]]]]
 reveal_type(upd_types)
+
+upd_types_dot: tuple[*[p.type for p in typing.Iter[typing.Members[HeroUpdate]]]]
+reveal_type(upd_types)
+
+
 [out]
 _program.py:133: note: Revealed type is "__typelevel__.NewProtocol[id: builtins.int, name: builtins.str, age: builtins.int | None]"
 _program.py:136: note: Revealed type is "__typelevel__.NewProtocol[name: builtins.str, age: builtins.int | None = None, secret_name: builtins.str]"
 _program.py:139: note: Revealed type is "__typelevel__.NewProtocol[name: builtins.str | None = None, age: builtins.int | None | None = None, secret_name: builtins.str | None = None]"
 _program.py:142: note: Revealed type is "tuple[Never, None, Never]"
 _program.py:145: note: Revealed type is "tuple[builtins.str | None, builtins.int | None | None, builtins.str | None]"
+_program.py:148: note: Revealed type is "tuple[builtins.str | None, builtins.int | None | None, builtins.str | None]"
