@@ -73,3 +73,55 @@ reveal_type(x)  # N: Revealed type is "tuple[builtins.list[builtins.int], builti
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
+
+[case testDictComprehensionNewTypedDict]
+# Test dict comprehension in type context with NewTypedDict
+from typing import NewTypedDict, Members, TypedDict, Iter, GetName, GetType
+
+class Person(TypedDict):
+    name: str
+    age: int
+
+# Dict comprehension produces Members, fed into NewTypedDict
+TD = NewTypedDict[{GetName[m]: GetType[m] for m in Iter[Members[Person]]}]
+x: TD
+reveal_type(x)  # N: Revealed type is "TypedDict({'name': builtins.str, 'age': builtins.int})"
+x = {'name': 'Alice', 'age': 30}
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testDictComprehensionNewTypedDictWithCondition]
+# Test dict comprehension with filtering condition
+from typing import NewTypedDict, Members, TypedDict, Iter, IsAssignable, GetName, GetType
+
+class Person(TypedDict):
+    name: str
+    age: int
+    active: bool
+
+# Filter to only string fields using dict comprehension
+TD = NewTypedDict[{GetName[m]: GetType[m] for m in Iter[Members[Person]] if IsAssignable[GetType[m], str]}]
+x: TD
+reveal_type(x)  # N: Revealed type is "TypedDict({'name': builtins.str})"
+x = {'name': 'Alice'}
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testDictComprehensionFromClass]
+# Test dict comprehension with class attributes
+from typing import NewTypedDict, Attrs, Iter, GetName, GetType
+
+class Point:
+    x: int
+    y: int
+
+# Create TypedDict from class attributes using dict comprehension
+TD = NewTypedDict[{GetName[m]: GetType[m] for m in Iter[Attrs[Point]]}]
+x: TD
+reveal_type(x)  # N: Revealed type is "TypedDict({'x': builtins.int, 'y': builtins.int})"
+x = {'x': 1, 'y': 2}
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]

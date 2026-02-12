@@ -2272,3 +2272,13 @@ class _Not(Generic[_T]):
     """
 
     ...
+
+@_type_operator
+class _DictEntry(Generic[_T1, _T2]):
+    """
+    Internal type operator for dict comprehension syntax in type context.
+    {k: v for x in foo} desugars to *[_DictEntry[k, v] for x in foo].
+    _DictEntry[name, typ] evaluates to Member[name, typ, Never, Never, Never].
+    """
+
+    ...

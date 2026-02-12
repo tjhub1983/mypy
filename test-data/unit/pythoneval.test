@@ -2380,7 +2380,17 @@ reveal_type(upd_types)
 upd_types_dot: tuple[*[p.type for p in typing.Iter[typing.Members[HeroUpdate]]]]
 reveal_type(upd_types)
 
+# Test dict comprehension syntax for NewTypedDict
+type HeroDict[T] = typing.NewTypedDict[{
+    typing.GetName[p]: typing.GetType[p]
+    for p in typing.Iter[typing.Attrs[T]]
+    if not typing.IsAssignable[
+        Literal[True], GetFieldItem[typing.GetInit[p], Literal["hidden"]]
+    ]
+}]
 
+hd: HeroDict[Hero]
+reveal_type(hd)
 [out]
 _program.py:133: note: Revealed type is "__typelevel__.NewProtocol[id: builtins.int, name: builtins.str, age: builtins.int | None]"
 _program.py:136: note: Revealed type is "__typelevel__.NewProtocol[name: builtins.str, age: builtins.int | None = None, secret_name: builtins.str]"
@@ -2388,3 +2398,4 @@ _program.py:139: note: Revealed type is "__typelevel__.NewProtocol[name: builtin
 _program.py:142: note: Revealed type is "tuple[Never, None, Never]"
 _program.py:145: note: Revealed type is "tuple[builtins.str | None, builtins.int | None | None, builtins.str | None]"
 _program.py:148: note: Revealed type is "tuple[builtins.str | None, builtins.int | None | None, builtins.str | None]"
+_program.py:160: note: Revealed type is "TypedDict({'id': builtins.int | None, 'name': builtins.str, 'age': builtins.int | None})"

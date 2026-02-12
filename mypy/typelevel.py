@@ -389,6 +389,22 @@ def _eval_not(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     return evaluator.literal_bool(not result)
 
 
+@register_operator("_DictEntry")
+def _eval_dict_entry(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
+    """Evaluate _DictEntry[name, typ] -> Member[name, typ, Never, Never, Never].
+
+    This is the internal type operator for dict comprehension syntax in type context.
+    {k: v for x in foo} desugars to *[_DictEntry[k, v] for x in foo].
+    """
+    if len(typ.args) != 2:
+        return UninhabitedType()
+
+    name_type, value_type = typ.args
+    member_info = evaluator.get_typemap_type("Member")
+    never = UninhabitedType()
+    return Instance(member_info.type, [name_type, value_type, never, never, never])
+
+
 @register_operator("Iter")
 def _eval_iter(evaluator: TypeLevelEvaluator, typ: TypeOperatorType) -> Type:
     """Evaluate a type-level iterator (Iter[T])."""

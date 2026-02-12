@@ -2155,6 +2155,45 @@ class TypeConverter:
         result.extra_items_from = extra_items_from
         return result
 
+    def visit_DictComp(self, n: ast3.DictComp) -> Type:
+        """Convert {k: v for x in Iter[T]} to *[_DictEntry[k, v] for x in Iter[T]].
+
+        Dict comprehensions in type context desugar to unpacked type comprehensions
+        where each element is a _DictEntry[key, value].
+        """
+        if len(n.generators) != 1:
+            return self.invalid_type(
+                n, note="Type comprehensions only support a single 'for' clause"
+            )
+
+        gen = n.generators[0]
+
+        if not isinstance(gen.target, ast3.Name):
+            return self.invalid_type(n, note="Type comprehension variable must be a simple name")
+
+        iter_name = gen.target.id
+        key_type = self.visit(n.key)
+        value_type = self.visit(n.value)
+        iter_type = self.visit(gen.iter)
+        conditions = [self.visit(cond) for cond in gen.ifs]
+
+        # Create _DictEntry[k, v] as the element expression
+        element_expr = UnboundType(
+            "__builtins__._DictEntry",
+            [key_type, value_type],
+            line=self.line,
+            column=self.convert_column(n.col_offset),
+        )
+
+        return TypeForComprehension(
+            element_expr=element_expr,
+            iter_name=iter_name,
+            iter_type=iter_type,
+            conditions=conditions,
+            line=self.line,
+            column=self.convert_column(n.col_offset),
+        )
+
     # Attribute(expr value, identifier attr, expr_context ctx)
     def visit_Attribute(self, n: Attribute) -> Type:
         before_dot = self.visit(n.value)

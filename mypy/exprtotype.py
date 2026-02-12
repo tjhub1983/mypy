@@ -13,6 +13,7 @@ from mypy.nodes import (
     ConditionalExpr,
     Context,
     DictExpr,
+    DictionaryComprehension,
     EllipsisExpr,
     Expression,
     FloatExpr,
@@ -344,6 +345,41 @@ def expr_to_unanalyzed_type(
         )
         result.extra_items_from = extra_items_from
         return result
+    elif isinstance(expr, DictionaryComprehension):
+        # Dict comprehension in type context: {k: v for x in foo}
+        # desugars to *[_DictEntry[k, v] for x in foo]
+        if len(expr.sequences) != 1:
+            raise TypeTranslationError()
+        index = expr.indices[0]
+        if not isinstance(index, NameExpr):
+            raise TypeTranslationError()
+        iter_name = index.name
+        key_type = expr_to_unanalyzed_type(
+            expr.key, options, allow_new_syntax, lookup_qualified=lookup_qualified
+        )
+        value_type = expr_to_unanalyzed_type(
+            expr.value, options, allow_new_syntax, lookup_qualified=lookup_qualified
+        )
+        iter_type = expr_to_unanalyzed_type(
+            expr.sequences[0], options, allow_new_syntax, lookup_qualified=lookup_qualified
+        )
+        cond_types: list[Type] = [
+            expr_to_unanalyzed_type(
+                cond, options, allow_new_syntax, lookup_qualified=lookup_qualified
+            )
+            for cond in expr.condlists[0]
+        ]
+        element_expr = UnboundType(
+            "__builtins__._DictEntry", [key_type, value_type], line=expr.line, column=expr.column
+        )
+        return TypeForComprehension(
+            element_expr=element_expr,
+            iter_name=iter_name,
+            iter_type=iter_type,
+            conditions=cond_types,
+            line=expr.line,
+            column=expr.column,
+        )
     elif isinstance(expr, ConditionalExpr):
 
         # Use __builtins__ so it can be resolved without explicit import
