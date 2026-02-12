@@ -405,7 +405,6 @@ err2: Array[float, L[3]]
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
 
-
 [case testTypeLevel_fastapilike]
 # flags: --python-version 3.14
 
