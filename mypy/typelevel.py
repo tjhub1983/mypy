@@ -432,7 +432,7 @@ def _eval_iter(arg: Type, *, evaluator: TypeLevelEvaluator) -> Type:
 
 
 @register_operator("IsAssignable")
-def _eval_issub(lhs: Type, rhs: Type, *, evaluator: TypeLevelEvaluator) -> Type:
+def _eval_isass(lhs: Type, rhs: Type, *, evaluator: TypeLevelEvaluator) -> Type:
     """Evaluate a type-level condition (IsAssignable[T, Base])."""
     left_proper = evaluator.eval_proper(lhs)
     right_proper = evaluator.eval_proper(rhs)
@@ -447,7 +447,7 @@ def _eval_issub(lhs: Type, rhs: Type, *, evaluator: TypeLevelEvaluator) -> Type:
 
 
 @register_operator("IsEquivalent")
-def _eval_matches(lhs: Type, rhs: Type, *, evaluator: TypeLevelEvaluator) -> Type:
+def _eval_isequiv(lhs: Type, rhs: Type, *, evaluator: TypeLevelEvaluator) -> Type:
     """Evaluate IsEquivalent[T, S] - check if T and S are equivalent types.
 
     Returns Literal[True] if T is a subtype of S AND S is a subtype of T.
