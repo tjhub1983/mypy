@@ -1,4 +1,4 @@
-# Builtins stub used in tuple-related test cases.
+# Builtins stub used in typelevel-related test cases.
 
 import _typeshed
 from typing import Iterable, Iterator, TypeVar, Generic, Sequence, Mapping, Optional, overload, Tuple, Type, Union, Self, type_check_only, _type_operator
