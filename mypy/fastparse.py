@@ -2200,6 +2200,20 @@ class TypeConverter:
 
         if isinstance(before_dot, UnboundType) and not before_dot.args:
             return UnboundType(f"{before_dot.name}.{n.attr}", line=self.line, column=n.col_offset)
+        elif isinstance(before_dot, UnboundType):
+            # Subscripted type with attribute access: GetMember[T, K].type
+            # Desugar to _TypeGetAttr[GetMember[T, K], Literal["attr"]]
+            attr_literal = UnboundType(
+                "Literal",
+                [RawExpressionType(n.attr, "builtins.str", line=self.line)],
+                line=self.line,
+            )
+            return UnboundType(
+                "__builtins__._TypeGetAttr",
+                [before_dot, attr_literal],
+                line=self.line,
+                column=n.col_offset,
+            )
         else:
             return self.invalid_type(n)
 

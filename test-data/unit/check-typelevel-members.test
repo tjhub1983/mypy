@@ -427,3 +427,63 @@ x = {'name': 'Alice'}
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
+
+[case testDotNotationOnSubscriptedType]
+# flags: --python-version 3.12
+# Test dot notation on a subscripted type expression
+from typing import Member, Literal, Never
+
+class Point:
+    x: int
+    y: str
+
+# Dot notation on a subscripted type: Member[...].typ
+x: Member[Literal['x'], int, Never, Never, Point].typ
+reveal_type(x)  # N: Revealed type is "builtins.int"
+
+y: Member[Literal['x'], int, Never, Never, Point].name
+reveal_type(y)  # N: Revealed type is "Literal['x']"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testDotNotationOnConditionalType]
+# flags: --python-version 3.12
+# Test dot notation where the LHS is a conditional type expression
+from typing import Member, Literal, Never, IsAssignable
+
+class Point:
+    x: int
+    y: str
+
+# Conditional evaluates to a Member, then .typ extracts the type
+x: (Member[Literal['x'], int, Never, Never, Point] if IsAssignable[int, int] else Member[Literal['y'], str, Never, Never, Point]).typ
+reveal_type(x)  # N: Revealed type is "builtins.int"
+
+# Same inside a type alias
+type T = (Member[Literal['x'], int, Never, Never, Point] if IsAssignable[int, str] else Member[Literal['y'], str, Never, Never, Point]).name
+a: T
+reveal_type(a)  # N: Revealed type is "Literal['y']"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testDotNotationOnSubscriptedTypeAlias]
+# flags: --python-version 3.12
+# Test dot notation on subscripted type inside a type alias
+from typing import Member, Literal, Never
+
+class Point:
+    x: int
+    y: str
+
+type T = Member[Literal['x'], int, Never, Never, Point].typ
+a: T
+reveal_type(a)  # N: Revealed type is "builtins.int"
+
+type N = Member[Literal['x'], int, Never, Never, Point].name
+b: N
+reveal_type(b)  # N: Revealed type is "Literal['x']"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]

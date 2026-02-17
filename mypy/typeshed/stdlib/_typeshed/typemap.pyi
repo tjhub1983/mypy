@@ -124,16 +124,6 @@ class GetMemberType(Generic[_T, _Name]):
     ...
 
 @_type_operator
-class _TypeGetAttr(Generic[_T, _Name]):
-    """
-    Internal type operator for dot notation on types.
-    T.attr in type context desugars to _TypeGetAttr[T, Literal["attr"]].
-    Semantically equivalent to GetMemberType.
-    """
-
-    ...
-
-@_type_operator
 class Members(Generic[_T]):
     """
     Get all members of type _T as a tuple of Member types.

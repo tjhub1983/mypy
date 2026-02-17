@@ -2282,3 +2282,13 @@ class _DictEntry(Generic[_T1, _T2]):
     """
 
     ...
+
+@_type_operator
+class _TypeGetAttr(Generic[_T1, _T2]):
+    """
+    Internal type operator for dot notation on types.
+    X[A].attr in type context desugars to _TypeGetAttr[X[A], Literal["attr"]].
+    Semantically equivalent to GetMemberType.
+    """
+
+    ...

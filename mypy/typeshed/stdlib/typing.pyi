@@ -1284,5 +1284,4 @@ if sys.version_info >= (3, 15):
         Slice as Slice,
         Uncapitalize as Uncapitalize,
         Uppercase as Uppercase,
-        _TypeGetAttr as _TypeGetAttr,
     )

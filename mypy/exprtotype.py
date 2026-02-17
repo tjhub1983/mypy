@@ -102,7 +102,22 @@ def expr_to_unanalyzed_type(
         if fullname:
             return UnboundType(fullname, line=expr.line, column=expr.column)
         else:
-            raise TypeTranslationError()
+            # Attribute access on a complex type expression (subscripted, conditional, etc.)
+            # Desugar X.attr to _TypeGetAttr[X, Literal["attr"]]
+            before_dot = expr_to_unanalyzed_type(
+                expr.expr, options, allow_new_syntax, expr, lookup_qualified=lookup_qualified
+            )
+            attr_literal = UnboundType(
+                "Literal",
+                [RawExpressionType(expr.name, "builtins.str", line=expr.line)],
+                line=expr.line,
+            )
+            return UnboundType(
+                "__builtins__._TypeGetAttr",
+                [before_dot, attr_literal],
+                line=expr.line,
+                column=expr.column,
+            )
     elif isinstance(expr, IndexExpr):
         base = expr_to_unanalyzed_type(
             expr.base, options, allow_new_syntax, expr, lookup_qualified=lookup_qualified

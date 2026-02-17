@@ -533,7 +533,7 @@ class TypeAnalyser(SyntheticTypeVisitor[Type], TypeAnalyzerPluginInterface):
                 prefix, attr = t.name.rsplit(".", 1)
                 prefix_sym = self.lookup_qualified(prefix, t, suppress_errors=True)
                 if prefix_sym is not None and isinstance(prefix_sym.node, TypeVarExpr):
-                    operator_sym = self.api.lookup_fully_qualified_or_none("typing._TypeGetAttr")
+                    operator_sym = self.api.lookup_fully_qualified_or_none("builtins._TypeGetAttr")
                     if operator_sym and isinstance(operator_sym.node, TypeInfo):
                         prefix_type = self.anal_type(
                             UnboundType(prefix, t.args, line=t.line, column=t.column)
