@@ -526,6 +526,7 @@ class TypeAnalyser(SyntheticTypeVisitor[Type], TypeAnalyzerPluginInterface):
             else:
                 return self.analyze_unbound_type_without_type_info(t, sym, defining_literal)
         else:  # sym is None
+            # TODO: XXX: I'm not sure if this is where I want this.
             # Try dot notation for type-level attribute access: T.attr -> _TypeGetAttr[T, Literal["attr"]]
             # Only applies when the prefix is a type variable (not a module, class, etc.)
             if "." in t.name:
