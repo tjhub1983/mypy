@@ -55,7 +55,7 @@ class Member(Generic[_Name, _Type, _Quals, _Init, _Definer]):
     """
 
     name: _Name
-    typ: _Type
+    type: _Type
     quals: _Quals
     init: _Init
     definer: _Definer
@@ -69,7 +69,7 @@ class Param(Generic[_Name, _Type, _Quals]):
     """
 
     name: _Name
-    typ: _Type
+    type: _Type
     quals: _Quals
 
 
@@ -160,7 +160,7 @@ _M = TypeVar("_M")
 
 
 GetName = GetMemberType[_MP, Literal["name"]]
-GetType = GetMemberType[_MP, Literal["typ"]]
+GetType = GetMemberType[_MP, Literal["type"]]
 GetQuals = GetMemberType[_MP, Literal["quals"]]
 GetInit = GetMemberType[_M, Literal["init"]]
 GetDefiner = GetMemberType[_M, Literal["definer"]]
