@@ -468,6 +468,37 @@ reveal_type(a)  # N: Revealed type is "Literal['y']"
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
 
+[case testAttrsOnEnum]
+# flags: --python-version 3.12
+from typing import Attrs, Iter, Union, IsAssignable, Never
+from enum import Enum
+
+class Color(Enum):
+    RED = 1
+    GREEN = 2
+    BLUE = 3
+
+a: Attrs[Color]
+reveal_type(a)  # N: Revealed type is "tuple[typing.Member[Literal['RED'], Literal[1]?, Literal['Final'], Literal[1], __main__.Color], typing.Member[Literal['GREEN'], Literal[2]?, Literal['Final'], Literal[2], __main__.Color], typing.Member[Literal['BLUE'], Literal[3]?, Literal['Final'], Literal[3], __main__.Color]]"
+
+type EnumNames[T] = Union[*[
+    m.name for m in Iter[Attrs[T]]
+    if not IsAssignable[m.init, Never]
+]]
+type EnumTypes[T] = Union[*[
+    m.init for m in Iter[Attrs[T]]
+    if not IsAssignable[m.init, Never]
+]]
+
+n: EnumNames[Color]
+reveal_type(n)  # N: Revealed type is "Literal['RED'] | Literal['GREEN'] | Literal['BLUE']"
+
+t: EnumTypes[Color]
+reveal_type(t)  # N: Revealed type is "Literal[1] | Literal[2] | Literal[3]"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
 [case testDotNotationOnSubscriptedTypeAlias]
 # flags: --python-version 3.12
 # Test dot notation on subscripted type inside a type alias

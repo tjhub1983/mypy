@@ -832,8 +832,9 @@ def _eval_members_impl(
             if sym.type is None:
                 continue
 
-            # Skip inferred attributes (those without explicit type annotations)
-            if isinstance(sym.node, Var) and sym.node.is_inferred:
+            # Skip inferred attributes (those without explicit type annotations),
+            # but include them for enums since enum members are always inferred.
+            if isinstance(sym.node, Var) and sym.node.is_inferred and not target.type.is_enum:
                 continue
 
             if attrs_only:
