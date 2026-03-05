@@ -4521,9 +4521,7 @@ def has_recursive_types(typ: Type) -> bool:
     return typ.accept(_has_recursive_type)
 
 
-def format_new_protocol(
-    t: Instance, format: Callable[[Type], str], prefix: str = "__typelevel__."
-) -> str:
+def format_new_protocol(t: Instance, format: Callable[[Type], str]) -> str:
     """Format a NewProtocol instance by showing its members.
 
     Used by both TypeStrVisitor and format_type_inner in messages.py.
@@ -4557,7 +4555,7 @@ def format_new_protocol(
 
         parts.append(f"{name}: {type_str}")
 
-    return f"{prefix}NewProtocol[{', '.join(parts)}]"
+    return f"NewProtocol[{', '.join(parts)}]"
 
 
 def split_with_prefix_and_suffix(

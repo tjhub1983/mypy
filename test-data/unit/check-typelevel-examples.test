@@ -160,12 +160,12 @@ class User:
 
 ####
 
-reveal_type(select(User, id=True, name=True))  # N: Revealed type is "builtins.list[__typelevel__.NewProtocol[id: builtins.int, name: builtins.str]]"
+reveal_type(select(User, id=True, name=True))  # N: Revealed type is "builtins.list[NewProtocol[id: builtins.int, name: builtins.str]]"
 
-reveal_type(select(User, name=True, email=True, posts=True))  # N: Revealed type is "builtins.list[__typelevel__.NewProtocol[name: builtins.str, email: builtins.str, posts: builtins.list[__typelevel__.NewProtocol[id: builtins.int, title: builtins.str, content: builtins.str]]]]"
+reveal_type(select(User, name=True, email=True, posts=True))  # N: Revealed type is "builtins.list[NewProtocol[name: builtins.str, email: builtins.str, posts: builtins.list[NewProtocol[id: builtins.int, title: builtins.str, content: builtins.str]]]]"
 
 
-reveal_type(select(Post, title=True, comments=True, author=True))  # N: Revealed type is "builtins.list[__typelevel__.NewProtocol[title: builtins.str, comments: builtins.list[__typelevel__.NewProtocol[id: builtins.int, name: builtins.str]], author: __typelevel__.NewProtocol[id: builtins.int, name: builtins.str]]]"
+reveal_type(select(Post, title=True, comments=True, author=True))  # N: Revealed type is "builtins.list[NewProtocol[title: builtins.str, comments: builtins.list[NewProtocol[id: builtins.int, name: builtins.str]], author: NewProtocol[id: builtins.int, name: builtins.str]]]"
 
 
 [builtins fixtures/typelevel.pyi]
@@ -537,13 +537,13 @@ type HeroCreate = Create[Hero]
 type HeroUpdate = Update[Hero]
 
 pub: HeroPublic
-reveal_type(pub)  # N: Revealed type is "__typelevel__.NewProtocol[id: builtins.int, name: builtins.str, age: builtins.int | None]"
+reveal_type(pub)  # N: Revealed type is "NewProtocol[id: builtins.int, name: builtins.str, age: builtins.int | None]"
 
 creat: HeroCreate
-reveal_type(creat)  # N: Revealed type is "__typelevel__.NewProtocol[name: builtins.str, age: builtins.int | None = None, secret_name: builtins.str]"
+reveal_type(creat)  # N: Revealed type is "NewProtocol[name: builtins.str, age: builtins.int | None = None, secret_name: builtins.str]"
 
 upd: HeroUpdate
-reveal_type(upd)  # N: Revealed type is "__typelevel__.NewProtocol[name: builtins.str | None = None, age: builtins.int | None | None = None, secret_name: builtins.str | None = None]"
+reveal_type(upd)  # N: Revealed type is "NewProtocol[name: builtins.str | None = None, age: builtins.int | None | None = None, secret_name: builtins.str | None = None]"
 
 creat_members: tuple[*[typing.GetInit[p] for p in typing.Iter[typing.Members[HeroCreate]]]]
 reveal_type(creat_members)  # N: Revealed type is "tuple[Never, None, Never]"

@@ -1079,7 +1079,7 @@ type LinkedList = NewProtocol[
 ]
 
 z: LinkedList
-reveal_type(z)  # N: Revealed type is "__typelevel__.NewProtocol[data: builtins.int, next: ...]"
+reveal_type(z)  # N: Revealed type is "NewProtocol[data: builtins.int, next: ...]"
 
 reveal_type(z.data)  # N: Revealed type is "builtins.int"
 reveal_type(z.next.next.data)  # N: Revealed type is "builtins.int"
@@ -1100,7 +1100,7 @@ type LinkedList[T] = NewProtocol[
 ]
 
 z: LinkedList[str]
-reveal_type(z)  # N: Revealed type is "__typelevel__.NewProtocol[data: builtins.str, next: ...]"
+reveal_type(z)  # N: Revealed type is "NewProtocol[data: builtins.str, next: ...]"
 
 reveal_type(z.data)  # N: Revealed type is "builtins.str"
 reveal_type(z.next.next.data)  # N: Revealed type is "builtins.str"

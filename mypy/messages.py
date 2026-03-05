@@ -2627,7 +2627,7 @@ def format_type_inner(
         itype = typ
         # Format NewProtocol types by showing their members
         if itype.type.is_new_protocol:
-            return format_new_protocol(itype, format, prefix="")
+            return format_new_protocol(itype, format)
         # Get the short name of the type.
         if itype.type.fullname == "types.ModuleType":
             # Make some common error messages simpler and tidier.
