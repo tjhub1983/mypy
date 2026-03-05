@@ -7476,8 +7476,6 @@ class TypeChecker(NodeVisitor[None], TypeCheckerSharedApi):
         if is_subtype(subtype, supertype, options=self.options):
             return True
 
-        is_subtype(subtype, supertype, options=self.options)
-
         if isinstance(msg, str):
             msg = ErrorMessage(msg, code=code)
 
