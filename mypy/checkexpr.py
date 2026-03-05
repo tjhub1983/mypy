@@ -1819,7 +1819,14 @@ class ExpressionChecker(ExpressionVisitor[Type], ExpressionCheckerSharedApi):
         )
 
         self.check_argument_types(
-            arg_types, arg_kinds, args, callee, formal_to_actual, context, object_type=object_type
+            arg_types,
+            arg_kinds,
+            args,
+            callee,
+            formal_to_actual,
+            context,
+            object_type=object_type,
+            arg_names=arg_names,
         )
 
         if (
@@ -2528,6 +2535,7 @@ class ExpressionChecker(ExpressionVisitor[Type], ExpressionCheckerSharedApi):
         context: Context,
         check_arg: ArgChecker | None = None,
         object_type: Type | None = None,
+        arg_names: Sequence[str | None] | None = None,
     ) -> None:
         """Check argument types against a callable type.
 
@@ -2607,6 +2615,22 @@ class ExpressionChecker(ExpressionVisitor[Type], ExpressionCheckerSharedApi):
                     elif isinstance(unpacked_type, TypeVarTupleType):
                         callee_arg_types = [orig_callee_arg_type]
                         callee_arg_kinds = [ARG_STAR]
+                    elif isinstance(unpacked_type, TypedDictType):
+                        # Unpack[TypedDict] for **kwargs — each kwarg gets its
+                        # corresponding item type from the TypedDict.
+                        #
+                        # TODO: This I think is duplicating some
+                        # handling of something somewhere.
+                        # TODO: special handling of kwargs
+                        callee_arg_types = list[Type]()
+                        callee_arg_kinds = list[ArgKind]()
+                        for a in actuals:
+                            name = arg_names[a] if arg_names else None
+                            if name is not None and name in unpacked_type.items:
+                                callee_arg_types.append(unpacked_type.items[name])
+                            else:
+                                callee_arg_types.append(orig_callee_arg_type)
+                            callee_arg_kinds.append(ARG_NAMED)
                     else:
                         assert isinstance(unpacked_type, Instance)
                         assert unpacked_type.type.fullname == "builtins.tuple"
@@ -3291,6 +3315,7 @@ class ExpressionChecker(ExpressionVisitor[Type], ExpressionCheckerSharedApi):
                 formal_to_actual,
                 context=context,
                 check_arg=check_arg,
+                arg_names=arg_names,
             )
             return True
         except Finished:
