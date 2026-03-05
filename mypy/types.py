@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 from abc import abstractmethod
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from typing import (
     Any,
     ClassVar,
@@ -4123,6 +4123,9 @@ class TypeStrVisitor(SyntheticTypeVisitor[str]):
             if (nt := try_expand_or_none(t)) and nt != t:
                 return nt.accept(self)
 
+        if t.type.is_new_protocol:
+            return self._format_new_protocol(t)
+
         fullname = t.type.fullname
         if not self.options.reveal_verbose_types and fullname.startswith("builtins."):
             fullname = t.type.name
@@ -4145,6 +4148,9 @@ class TypeStrVisitor(SyntheticTypeVisitor[str]):
         if self.id_mapper:
             s += f"<{self.id_mapper.id(t.type)}>"
         return s
+
+    def _format_new_protocol(self, t: Instance) -> str:
+        return format_new_protocol(t, lambda typ: typ.accept(self))
 
     def visit_type_var(self, t: TypeVarType, /) -> str:
         if not self.options.reveal_verbose_types:
@@ -4513,6 +4519,45 @@ def has_recursive_types(typ: Type) -> bool:
     """Check if a type contains any recursive aliases (recursively)."""
     _has_recursive_type.reset()
     return typ.accept(_has_recursive_type)
+
+
+def format_new_protocol(
+    t: Instance, format: Callable[[Type], str], prefix: str = "__typelevel__."
+) -> str:
+    """Format a NewProtocol instance by showing its members.
+
+    Used by both TypeStrVisitor and format_type_inner in messages.py.
+    """
+    from mypy.nodes import Var
+
+    parts: list[str] = []
+    for name, node in t.type.names.items():
+        if not isinstance(node.node, Var):
+            continue
+        var = node.node
+        if var.type is not None:
+            type_str = format(var.type)
+        else:
+            type_str = "<???>"
+
+        if var.is_classvar:
+            type_str = f"ClassVar[{type_str}]"
+        if var.is_final:
+            type_str = f"Final[{type_str}]"
+
+        # Append initializer info
+        if var.init_type is not None:
+            init = get_proper_type(var.init_type)
+            if isinstance(init, LiteralType):
+                type_str = f"{type_str} = {init.value}"
+            elif isinstance(init, NoneType):
+                type_str = f"{type_str} = None"
+            elif not isinstance(init, UninhabitedType):
+                type_str = f"{type_str} = ..."
+
+        parts.append(f"{name}: {type_str}")
+
+    return f"{prefix}NewProtocol[{', '.join(parts)}]"
 
 
 def split_with_prefix_and_suffix(

@@ -102,6 +102,7 @@ from mypy.types import (
     UnionType,
     UnpackType,
     flatten_nested_unions,
+    format_new_protocol,
     get_proper_type,
     get_proper_types,
 )
@@ -2624,6 +2625,9 @@ def format_type_inner(
 
     if isinstance(typ, Instance):
         itype = typ
+        # Format NewProtocol types by showing their members
+        if itype.type.is_new_protocol:
+            return format_new_protocol(itype, format, prefix="")
         # Get the short name of the type.
         if itype.type.fullname == "types.ModuleType":
             # Make some common error messages simpler and tidier.

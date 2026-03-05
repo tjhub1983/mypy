@@ -1057,9 +1057,11 @@ g: Good
 takes_proto(g)
 
 b: Bad
-takes_proto(b)  # E: Argument 1 to "takes_proto" has incompatible type "Bad"; expected "NewProtocol[x: builtins.int, y: builtins.str]" \
-                # N: "Bad" is missing following "NewProtocol[x: builtins.int, y: builtins.str]" protocol member: \
+takes_proto(b)  # E: Argument 1 to "takes_proto" has incompatible type "Bad"; expected "NewProtocol[x: int, y: str]" \
+                # N: "Bad" is missing following "NewProtocol" protocol member: \
                 # N:     y
+
+
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
@@ -1077,7 +1079,7 @@ type LinkedList = NewProtocol[
 ]
 
 z: LinkedList
-reveal_type(z)  # N: Revealed type is "__typelevel__.NewProtocol[data: builtins.int, next: __main__.LinkedList]"
+reveal_type(z)  # N: Revealed type is "__typelevel__.NewProtocol[data: builtins.int, next: ...]"
 
 reveal_type(z.data)  # N: Revealed type is "builtins.int"
 reveal_type(z.next.next.data)  # N: Revealed type is "builtins.int"
@@ -1098,7 +1100,7 @@ type LinkedList[T] = NewProtocol[
 ]
 
 z: LinkedList[str]
-reveal_type(z)  # N: Revealed type is "__typelevel__.NewProtocol[data: builtins.str, next: __main__.LinkedList[builtins.str]]"
+reveal_type(z)  # N: Revealed type is "__typelevel__.NewProtocol[data: builtins.str, next: ...]"
 
 reveal_type(z.data)  # N: Revealed type is "builtins.str"
 reveal_type(z.next.next.data)  # N: Revealed type is "builtins.str"
@@ -1186,7 +1188,7 @@ nap: NotAPoint
 
 draw(p2d)  # OK - has x and y
 draw(p3d)  # OK - has x and y (plus z is fine)
-draw(nap)  # E: Argument 1 to "draw" has incompatible type "NotAPoint"; expected "NewProtocol[x: builtins.int, y: builtins.int]"
+draw(nap)  # E: Argument 1 to "draw" has incompatible type "NotAPoint"; expected "NewProtocol[x: int, y: int]"
 
 
 

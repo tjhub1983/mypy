@@ -996,36 +996,6 @@ def _eval_new_typeddict(*args: Type, evaluator: TypeLevelEvaluator) -> Type:
     )
 
 
-def _proto_entry_str(entry: tuple[Type, Type, bool, bool]) -> str:
-    typ, init_type, is_classvar, is_final = entry
-    # XXX: We fully expand the type here for stringifying, which is
-    # potentially dangerous...
-    # TODO: We'll need to prevent recursion or something.
-    styp = typ.str_with_options(expand=True)
-
-    if is_classvar:
-        styp = f"ClassVar[{styp}]"
-    if is_final:
-        styp = f"Final[{styp}]"
-
-    # XXX: use evaluator?
-    # Put the initializers in also
-    init_type = get_proper_type(init_type)
-    if isinstance(init_type, LiteralType):
-        styp = f"{styp} = {init_type.value}"
-    elif isinstance(init_type, NoneType):
-        styp = f"{styp} = None"
-    elif not isinstance(init_type, UninhabitedType):
-        styp = f"{styp} = ..."
-
-    return styp
-
-
-def _proto_str(map: dict[str, tuple[Type, Type, bool, bool]]) -> str:
-    body = [f"{name}: {_proto_entry_str(entry)}" for name, entry in map.items()]
-    return f"NewProtocol[{', '.join(body)}]"
-
-
 @register_operator("NewProtocol")
 def _eval_new_protocol(*args: Type, evaluator: TypeLevelEvaluator) -> Type:
     """Evaluate NewProtocol[*Members] -> create a new structural protocol type.
@@ -1087,10 +1057,7 @@ def _eval_new_protocol(*args: Type, evaluator: TypeLevelEvaluator) -> Type:
 
         member_vars[name] = (item_type, init_type, is_classvar, is_final)
 
-    # Generate a unique name for the synthetic protocol
-    # XXX: I hope that it is unique based on the inputs?
-    # Should we cache it also?
-    protocol_name = _proto_str(member_vars)
+    protocol_name = "NewProtocol"
 
     # Create the synthetic protocol TypeInfo
     # HACK: We create a ClassDef with an empty Block because TypeInfo requires one.
@@ -1103,6 +1070,7 @@ def _eval_new_protocol(*args: Type, evaluator: TypeLevelEvaluator) -> Type:
 
     # Mark as protocol
     info.is_protocol = True
+    info.is_new_protocol = True
     info.runtime_protocol = False  # These aren't runtime checkable
 
     # Set up bases - inherit from object (not Protocol, since Protocol is just a marker)
