@@ -629,63 +629,12 @@ def _eval_new_union(*args: Type, evaluator: TypeLevelEvaluator) -> Type:
 @lift_over_unions
 def _eval_get_member(target_arg: Type, name_arg: Type, *, evaluator: TypeLevelEvaluator) -> Type:
     """Evaluate GetMember[T, Name] - get Member type for named member from T."""
-    target = evaluator.eval_proper(target_arg)
-    name_type = evaluator.eval_proper(name_arg)
-
-    name = extract_literal_string(name_type)
+    name = extract_literal_string(evaluator.eval_proper(name_arg))
     if name is None:
         return UninhabitedType()
 
-    member_info = evaluator.get_typemap_type("Member")
-
-    if isinstance(target, Instance):
-        # Walk MRO to find the member (same as Members/Attrs)
-        for type_info in target.type.mro:
-            sym = type_info.names.get(name)
-            if sym is None or sym.type is None:
-                continue
-
-            # Map type_info to get correct type args as seen from target
-            if type_info == target.type:
-                definer = target
-            else:
-                definer = map_instance_to_supertype(target, type_info)
-
-            member_typ = expand_type_by_instance(sym.type, definer)
-            return create_member_type(
-                evaluator,
-                member_info.type,
-                name=name,
-                typ=member_typ,
-                node=sym.node,
-                definer=definer,
-            )
-        return UninhabitedType()
-
-    if isinstance(target, TypedDictType):
-        item_type = target.items.get(name)
-        if item_type is None:
-            return UninhabitedType()
-
-        quals: list[str] = []
-        if name not in target.required_keys:
-            quals.append("NotRequired")
-        if name in target.readonly_keys:
-            quals.append("ReadOnly")
-        quals_type = UnionType.make_union([evaluator.literal_str(q) for q in quals])
-
-        return Instance(
-            member_info.type,
-            [
-                evaluator.literal_str(name),
-                item_type,
-                quals_type,
-                UninhabitedType(),  # init
-                UninhabitedType(),  # definer
-            ],
-        )
-
-    return UninhabitedType()
+    members = _get_members_dict(target_arg, evaluator=evaluator, attrs_only=False)
+    return members.get(name, UninhabitedType())
 
 
 @register_operator("GetMemberType")
@@ -694,26 +643,26 @@ def _eval_get_member_type(
     target_arg: Type, name_arg: Type, *, evaluator: TypeLevelEvaluator
 ) -> Type:
     """Evaluate GetMemberType[T, Name] - get attribute type from T."""
-    target = evaluator.eval_proper(target_arg)
-    name_type = evaluator.eval_proper(name_arg)
-
-    name = extract_literal_string(name_type)
+    name = extract_literal_string(evaluator.eval_proper(name_arg))
     if name is None:
         return UninhabitedType()
 
-    # TODO: Use the Members logic?
+    # Try the full members dict first (handles user-defined classes and TypedDicts)
+    members = _get_members_dict(target_arg, evaluator=evaluator, attrs_only=False)
+    member = members.get(name)
+    if member is not None:
+        # Extract the type argument (index 1) from Member[name, typ, quals, init, definer]
+        member = get_proper_type(member)
+        if isinstance(member, Instance) and len(member.args) > 1:
+            return member.args[1]
+        return UninhabitedType()
+
+    # Fall back to direct attribute lookup (works for stub types like Member itself)
+    target = evaluator.eval_proper(target_arg)
     if isinstance(target, Instance):
         node = target.type.names.get(name)
         if node is not None and node.type is not None:
-            # Expand the attribute type with the instance's type arguments
             return expand_type_by_instance(node.type, target)
-        return UninhabitedType()
-    if isinstance(target, TypedDictType):
-        itype = target.items.get(name)
-        if itype is not None:
-            return itype
-        return UninhabitedType()
-
     return UninhabitedType()
 
 
@@ -864,23 +813,32 @@ def _eval_attrs(target: Type, *, evaluator: TypeLevelEvaluator) -> Type:
 def _eval_members_impl(
     target_arg: Type, *, evaluator: TypeLevelEvaluator, attrs_only: bool
 ) -> Type:
-    """Common implementation for Members and Attrs operators.
+    """Common implementation for Members and Attrs operators."""
+    members = _get_members_dict(target_arg, evaluator=evaluator, attrs_only=attrs_only)
+    return evaluator.tuple_type(list(members.values()))
+
+
+def _get_members_dict(
+    target_arg: Type, *, evaluator: TypeLevelEvaluator, attrs_only: bool
+) -> dict[str, Type]:
+    """Build a dict of member name -> Member type for all members of target.
 
     Args:
         attrs_only: If True, filter to attributes only (excludes methods).
                     If False, include all members.
+
+    Returns a dict mapping member names to Member[name, typ, quals, init, definer]
+    instance types.
     """
     target = evaluator.eval_proper(target_arg)
 
-    # Get the Member TypeInfo
     member_info = evaluator.get_typemap_type("Member")
 
-    # Handle TypedDict
     if isinstance(target, TypedDictType):
-        return _eval_typeddict_members(target, member_info.type, evaluator=evaluator)
+        return _get_typeddict_members_dict(target, member_info.type, evaluator=evaluator)
 
     if not isinstance(target, Instance):
-        return UninhabitedType()
+        return {}
 
     members: dict[str, Type] = {}
 
@@ -925,14 +883,14 @@ def _eval_members_impl(
             )
             members[name] = member_type
 
-    return evaluator.tuple_type(list(members.values()))
+    return members
 
 
-def _eval_typeddict_members(
+def _get_typeddict_members_dict(
     target: TypedDictType, member_type_info: TypeInfo, *, evaluator: TypeLevelEvaluator
-) -> Type:
-    """Evaluate Members/Attrs for a TypedDict type."""
-    members: list[Type] = []
+) -> dict[str, Type]:
+    """Build a dict of member name -> Member type for a TypedDict."""
+    members: dict[str, Type] = {}
 
     for name, item_type in target.items.items():
         # Build qualifiers for TypedDict keys
@@ -945,7 +903,7 @@ def _eval_typeddict_members(
 
         quals_type = UnionType.make_union([evaluator.literal_str(q) for q in quals])
 
-        member_type = Instance(
+        members[name] = Instance(
             member_type_info,
             [
                 evaluator.literal_str(name),  # name
@@ -955,9 +913,8 @@ def _eval_typeddict_members(
                 UninhabitedType(),  # definer (not tracked for TypedDict)
             ],
         )
-        members.append(member_type)
 
-    return evaluator.tuple_type(members)
+    return members
 
 
 def create_member_type(
