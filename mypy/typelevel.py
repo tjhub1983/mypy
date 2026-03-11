@@ -633,7 +633,9 @@ def _eval_get_member(target_arg: Type, name_arg: Type, *, evaluator: TypeLevelEv
     if name is None:
         return UninhabitedType()
 
-    members = _get_members_dict(target_arg, evaluator=evaluator, attrs_only=False)
+    members = _get_members_dict(
+        target_arg, evaluator=evaluator, attrs_only=False, skip_stubs=False
+    )
     return members.get(name, UninhabitedType())
 
 
@@ -647,22 +649,15 @@ def _eval_get_member_type(
     if name is None:
         return UninhabitedType()
 
-    # Try the full members dict first (handles user-defined classes and TypedDicts)
-    members = _get_members_dict(target_arg, evaluator=evaluator, attrs_only=False)
+    members = _get_members_dict(
+        target_arg, evaluator=evaluator, attrs_only=False, skip_stubs=False
+    )
     member = members.get(name)
     if member is not None:
         # Extract the type argument (index 1) from Member[name, typ, quals, init, definer]
         member = get_proper_type(member)
         if isinstance(member, Instance) and len(member.args) > 1:
             return member.args[1]
-        return UninhabitedType()
-
-    # Fall back to direct attribute lookup (works for stub types like Member itself)
-    target = evaluator.eval_proper(target_arg)
-    if isinstance(target, Instance):
-        node = target.type.names.get(name)
-        if node is not None and node.type is not None:
-            return expand_type_by_instance(node.type, target)
     return UninhabitedType()
 
 
@@ -819,13 +814,19 @@ def _eval_members_impl(
 
 
 def _get_members_dict(
-    target_arg: Type, *, evaluator: TypeLevelEvaluator, attrs_only: bool
+    target_arg: Type, *, evaluator: TypeLevelEvaluator, attrs_only: bool, skip_stubs: bool = True
 ) -> dict[str, Type]:
     """Build a dict of member name -> Member type for all members of target.
 
     Args:
         attrs_only: If True, filter to attributes only (excludes methods).
                     If False, include all members.
+        skip_stubs: If True, skip members defined in stub files.
+                    This is wrong -- we should have a better way to filter
+                    out inherited object/builtins noise in Members/Attrs
+                    without hiding all stub-defined members. But for now,
+                    Members/Attrs pass True and GetMember/GetMemberType
+                    pass False.
 
     Returns a dict mapping member names to Member[name, typ, quals, init, definer]
     instance types.
@@ -844,10 +845,10 @@ def _get_members_dict(
 
     # Iterate through MRO in reverse (base classes first) to include inherited members
     for type_info in reversed(target.type.mro):
-        # Skip types defined in stub files
-        module = evaluator.api.modules.get(type_info.module_name)
-        if module is not None and module.is_stub:
-            continue
+        if skip_stubs:
+            module = evaluator.api.modules.get(type_info.module_name)
+            if module is not None and module.is_stub:
+                continue
 
         for name, sym in type_info.names.items():
             if sym.type is None:
