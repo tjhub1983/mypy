@@ -518,3 +518,70 @@ reveal_type(b)  # N: Revealed type is "Literal['x']"
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
+
+[case testGetMemberBasic]
+from typing import GetMember, Member, Literal, Never
+
+class Foo:
+    x: int
+    y: str
+
+a: GetMember[Foo, Literal['x']]
+reveal_type(a)  # N: Revealed type is "typing.Member[Literal['x'], builtins.int, Never, Never, __main__.Foo]"
+b: GetMember[Foo, Literal['y']]
+reveal_type(b)  # N: Revealed type is "typing.Member[Literal['y'], builtins.str, Never, Never, __main__.Foo]"
+
+# Non-existent member returns Never
+c: GetMember[Foo, Literal['z']]
+reveal_type(c)  # N: Revealed type is "Never"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testGetMemberTypedDict]
+from typing import GetMember, Member, Literal, Never, TypedDict
+
+class TD(TypedDict):
+    name: str
+    age: int
+
+a: GetMember[TD, Literal['name']]
+reveal_type(a)  # N: Revealed type is "typing.Member[Literal['name'], builtins.str, Never, Never, Never]"
+b: GetMember[TD, Literal['age']]
+reveal_type(b)  # N: Revealed type is "typing.Member[Literal['age'], builtins.int, Never, Never, Never]"
+c: GetMember[TD, Literal['missing']]
+reveal_type(c)  # N: Revealed type is "Never"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testGetMemberInherited]
+from typing import GetMember, Member, Literal, Never
+
+class Base:
+    x: int
+
+class Child(Base):
+    y: str
+
+a: GetMember[Child, Literal['x']]
+reveal_type(a)  # N: Revealed type is "typing.Member[Literal['x'], builtins.int, Never, Never, __main__.Base]"
+b: GetMember[Child, Literal['y']]
+reveal_type(b)  # N: Revealed type is "typing.Member[Literal['y'], builtins.str, Never, Never, __main__.Child]"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testGetMemberGeneric]
+from typing import GetMember, Member, Generic, TypeVar, Literal, Never
+
+T = TypeVar('T')
+
+class Box(Generic[T]):
+    value: T
+
+a: GetMember[Box[int], Literal['value']]
+reveal_type(a)  # N: Revealed type is "typing.Member[Literal['value'], builtins.int, Never, Never, __main__.Box[builtins.int]]"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]

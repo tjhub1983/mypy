@@ -1200,6 +1200,7 @@ if sys.version_info >= (3, 15):
         # Type operators
         "GetArg",
         "GetArgs",
+        "GetMember",
         "GetMemberType",
         "Members",
         "Attrs",
@@ -1256,6 +1257,7 @@ if sys.version_info >= (3, 15):
         GetAnnotations as GetAnnotations,
         GetArg as GetArg,
         GetArgs as GetArgs,
+        GetMember as GetMember,
         GetMemberType as GetMemberType,
         GetDefiner as GetDefiner,
         GetInit as GetInit,

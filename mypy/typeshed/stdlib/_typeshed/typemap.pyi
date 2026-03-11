@@ -115,6 +115,16 @@ class GetArgs(Generic[_T, _Base]):
     ...
 
 @_type_operator
+class GetMember(Generic[_T, _Name]):
+    """
+    Get the Member type for attribute _Name from type _T.
+    _Name must be a Literal[str].
+    Returns Never if the member does not exist.
+    """
+
+    ...
+
+@_type_operator
 class GetMemberType(Generic[_T, _Name]):
     """
     Get the type of attribute _Name from type _T.

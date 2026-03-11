@@ -625,6 +625,69 @@ def _eval_new_union(*args: Type, evaluator: TypeLevelEvaluator) -> Type:
     return make_simplified_union(list(args))
 
 
+@register_operator("GetMember")
+@lift_over_unions
+def _eval_get_member(target_arg: Type, name_arg: Type, *, evaluator: TypeLevelEvaluator) -> Type:
+    """Evaluate GetMember[T, Name] - get Member type for named member from T."""
+    target = evaluator.eval_proper(target_arg)
+    name_type = evaluator.eval_proper(name_arg)
+
+    name = extract_literal_string(name_type)
+    if name is None:
+        return UninhabitedType()
+
+    member_info = evaluator.get_typemap_type("Member")
+
+    if isinstance(target, Instance):
+        # Walk MRO to find the member (same as Members/Attrs)
+        for type_info in target.type.mro:
+            sym = type_info.names.get(name)
+            if sym is None or sym.type is None:
+                continue
+
+            # Map type_info to get correct type args as seen from target
+            if type_info == target.type:
+                definer = target
+            else:
+                definer = map_instance_to_supertype(target, type_info)
+
+            member_typ = expand_type_by_instance(sym.type, definer)
+            return create_member_type(
+                evaluator,
+                member_info.type,
+                name=name,
+                typ=member_typ,
+                node=sym.node,
+                definer=definer,
+            )
+        return UninhabitedType()
+
+    if isinstance(target, TypedDictType):
+        item_type = target.items.get(name)
+        if item_type is None:
+            return UninhabitedType()
+
+        quals: list[str] = []
+        if name not in target.required_keys:
+            quals.append("NotRequired")
+        if name in target.readonly_keys:
+            quals.append("ReadOnly")
+        quals_type = UnionType.make_union([evaluator.literal_str(q) for q in quals])
+
+        return Instance(
+            member_info.type,
+            [
+                evaluator.literal_str(name),
+                item_type,
+                quals_type,
+                UninhabitedType(),  # init
+                UninhabitedType(),  # definer
+            ],
+        )
+
+    return UninhabitedType()
+
+
 @register_operator("GetMemberType")
 @lift_over_unions
 def _eval_get_member_type(
