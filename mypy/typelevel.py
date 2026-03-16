@@ -633,9 +633,7 @@ def _eval_get_member(target_arg: Type, name_arg: Type, *, evaluator: TypeLevelEv
     if name is None:
         return UninhabitedType()
 
-    members = _get_members_dict(
-        target_arg, evaluator=evaluator, attrs_only=False, skip_stubs=False
-    )
+    members = _get_members_dict(target_arg, evaluator=evaluator, attrs_only=False)
     return members.get(name, UninhabitedType())
 
 
@@ -649,9 +647,7 @@ def _eval_get_member_type(
     if name is None:
         return UninhabitedType()
 
-    members = _get_members_dict(
-        target_arg, evaluator=evaluator, attrs_only=False, skip_stubs=False
-    )
+    members = _get_members_dict(target_arg, evaluator=evaluator, attrs_only=False)
     member = members.get(name)
     if member is not None:
         # Extract the type argument (index 1) from Member[name, typ, quals, init, definer]
@@ -813,20 +809,30 @@ def _eval_members_impl(
     return evaluator.tuple_type(list(members.values()))
 
 
+def _should_skip_type_info(type_info: TypeInfo, api: SemanticAnalyzerInterface) -> bool:
+    """Determine whether to skip a type_info when collecting members.
+
+    HACK: The rules here need to be more clearly defined. For now, we skip
+    anything from a stub file except typing.Member (which needs to be
+    introspectable for GetMemberType/dot notation on Member instances).
+    """
+    # TODO: figure out the real rules for this
+    if type_info.fullname == "typing.Member" or type_info.fullname == "_typeshed.typemap.Member":
+        return False
+    module = api.modules.get(type_info.module_name)
+    if module is not None and module.is_stub:
+        return True
+    return False
+
+
 def _get_members_dict(
-    target_arg: Type, *, evaluator: TypeLevelEvaluator, attrs_only: bool, skip_stubs: bool = True
+    target_arg: Type, *, evaluator: TypeLevelEvaluator, attrs_only: bool
 ) -> dict[str, Type]:
     """Build a dict of member name -> Member type for all members of target.
 
     Args:
         attrs_only: If True, filter to attributes only (excludes methods).
                     If False, include all members.
-        skip_stubs: If True, skip members defined in stub files.
-                    This is wrong -- we should have a better way to filter
-                    out inherited object/builtins noise in Members/Attrs
-                    without hiding all stub-defined members. But for now,
-                    Members/Attrs pass True and GetMember/GetMemberType
-                    pass False.
 
     Returns a dict mapping member names to Member[name, typ, quals, init, definer]
     instance types.
@@ -845,10 +851,8 @@ def _get_members_dict(
 
     # Iterate through MRO in reverse (base classes first) to include inherited members
     for type_info in reversed(target.type.mro):
-        if skip_stubs:
-            module = evaluator.api.modules.get(type_info.module_name)
-            if module is not None and module.is_stub:
-                continue
+        if _should_skip_type_info(type_info, evaluator.api):
+            continue
 
         for name, sym in type_info.names.items():
             if sym.type is None:
