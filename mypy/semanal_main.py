@@ -34,7 +34,16 @@ from typing import TYPE_CHECKING, Final, TypeAlias as _TypeAlias
 import mypy.state
 from mypy.checker import FineGrainedDeferredNode
 from mypy.errors import Errors
-from mypy.nodes import Decorator, FuncDef, MypyFile, OverloadedFuncDef, TypeInfo, Var
+from mypy.nodes import (
+    MDEF,
+    Decorator,
+    FuncDef,
+    MypyFile,
+    OverloadedFuncDef,
+    SymbolTableNode,
+    TypeInfo,
+    Var,
+)
 from mypy.options import Options
 from mypy.plugin import ClassDefContext
 from mypy.plugins import dataclasses as dataclasses_plugin
@@ -539,7 +548,105 @@ def apply_hooks_to_class(
             # an Expression for reason
             ok = ok and dataclasses_plugin.DataclassTransformer(defn, defn, spec, self).transform()
 
+    # Apply UpdateClass effects from decorators and __init_subclass__
+    with self.file_context(file_node, options, info):
+        _apply_update_class_effects(self, info)
+
     return ok
+
+
+def _apply_update_class_effects(self: SemanticAnalyzer, info: TypeInfo) -> None:
+    """Apply UpdateClass effects from decorators and __init_subclass__ to a class."""
+    from mypy.expandtype import expand_type
+    from mypy.nodes import RefExpr
+    from mypy.typelevel import MemberDef, evaluate_update_class
+    from mypy.types import (
+        CallableType,
+        Instance,
+        TypeOperatorType,
+        TypeType,
+        TypeVarType,
+        UninhabitedType,
+        get_proper_type,
+    )
+    from mypy.typevars import fill_typevars
+
+    defn = info.defn
+
+    def _get_class_instance() -> Instance:
+        inst = fill_typevars(info)
+        if isinstance(inst, Instance):
+            return inst
+        # TupleType fallback
+        return inst.partial_fallback
+
+    def _resolve_and_apply(func_type: CallableType) -> None:
+        """Check if func_type returns UpdateClass, resolve it, and apply to info."""
+        ret_type = func_type.ret_type
+        # Don't use get_proper_type here — it would eagerly expand the TypeOperatorType
+        if not isinstance(ret_type, TypeOperatorType):
+            return
+        if ret_type.type.name != "UpdateClass":
+            return
+
+        # Build substitution map: find type[T] in the first arg and bind T to class instance
+        env = {}
+        if func_type.arg_types:
+            first_arg = get_proper_type(func_type.arg_types[0])
+            if isinstance(first_arg, TypeType) and isinstance(first_arg.item, TypeVarType):
+                env[first_arg.item.id] = _get_class_instance()
+
+        # Substitute type vars in return type
+        if env:
+            ret_type = expand_type(ret_type, env)
+
+        assert isinstance(ret_type, TypeOperatorType)
+        members = evaluate_update_class(ret_type, self, defn)
+        if members is not None:
+            _apply_members(members)
+
+    def _apply_members(members: list[MemberDef]) -> None:
+        for m in members:
+            if isinstance(get_proper_type(m.type), UninhabitedType):
+                # Never-typed members mean "remove this member"
+                info.names.pop(m.name, None)
+            else:
+                var = Var(m.name, m.type)
+                var.info = info
+                var._fullname = f"{info.fullname}.{m.name}"
+                var.is_classvar = m.is_classvar
+                var.is_final = m.is_final
+                var.is_initialized_in_class = True
+                var.init_type = m.init_type
+                var.is_inferred = False
+                info.names[m.name] = SymbolTableNode(MDEF, var)
+
+    def _get_func_type(
+        node: FuncDef | Decorator | OverloadedFuncDef | None,
+    ) -> CallableType | None:
+        if isinstance(node, Decorator):
+            node = node.func
+        if isinstance(node, FuncDef) and isinstance(node.type, CallableType):
+            return node.type
+        return None
+
+    # Apply UpdateClass from decorators
+    for decorator in defn.decorators:
+        if isinstance(decorator, RefExpr) and decorator.node is not None:
+            node = decorator.node
+            if isinstance(node, (FuncDef, Decorator, OverloadedFuncDef)):
+                func_type = _get_func_type(node)
+                if func_type is not None:
+                    _resolve_and_apply(func_type)
+
+    # Apply UpdateClass from __init_subclass__ (reverse MRO order, per PEP spec)
+    for base in reversed(info.mro[1:]):
+        if "__init_subclass__" not in base.names:
+            continue
+        sym = base.names["__init_subclass__"]
+        func_type = _get_func_type(sym.node)  # type: ignore[arg-type]
+        if func_type is not None:
+            _resolve_and_apply(func_type)
 
 
 def calculate_class_properties(graph: Graph, scc: list[str], errors: Errors) -> None:

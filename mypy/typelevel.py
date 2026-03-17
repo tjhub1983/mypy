@@ -15,7 +15,7 @@ import itertools
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, NamedTuple
 
 from mypy.expandtype import expand_type, expand_type_by_instance
 from mypy.maptype import map_instance_to_supertype
@@ -786,10 +786,7 @@ def _eval_type_get_attr(
 
     member_info = evaluator.get_typemap_type("Member")
     param_info = evaluator.get_typemap_type("Param")
-    if not isinstance(target, Instance) or target.type not in (
-        member_info.type,
-        param_info.type,
-    ):
+    if not isinstance(target, Instance) or target.type not in (member_info.type, param_info.type):
         name_type = evaluator.eval_proper(name_arg)
         name = extract_literal_string(name_type)
         evaluator.api.fail(
@@ -1146,54 +1143,48 @@ def _eval_new_typeddict(*args: Type, evaluator: TypeLevelEvaluator) -> Type:
     )
 
 
-@register_operator("NewProtocol")
-def _eval_new_protocol(*args: Type, evaluator: TypeLevelEvaluator) -> Type:
-    """Evaluate NewProtocol[*Members] -> create a new structural protocol type.
+class MemberDef(NamedTuple):
+    """Extracted member definition from a Member[name, typ, quals, init, definer] type."""
 
-    This creates a synthetic protocol class with members defined by the Member arguments.
-    The protocol type uses structural subtyping.
+    name: str
+    type: Type
+    init_type: Type
+    is_classvar: bool
+    is_final: bool
+
+
+def _extract_members(
+    args: tuple[Type, ...], evaluator: TypeLevelEvaluator, *, eval_types: bool = False
+) -> list[MemberDef] | None:
+    """Extract member definitions from Member type arguments.
+
+    Returns a list of MemberDef, or None if any argument is not a valid Member.
+
+    If eval_types is True, member types are eagerly evaluated via the
+    evaluator (needed for UpdateClass where the types are stored on a
+    real TypeInfo and must be fully resolved).
     """
-
-    # TODO: methods are probably in bad shape
-
-    # Get the Member TypeInfo to verify arguments
     member_info = evaluator.get_typemap_type("Member")
-
-    # Get object type for the base class
-    # N.B: We don't inherit from Protocol directly because Protocol is not always
-    # a TypeInfo in test fixtures. Instead we just set is_protocol=True and inherit
-    # from object, which is how mypy handles protocols internally (the Protocol base
-    # is removed from bases but is_protocol is set).
-    object_type = evaluator.api.named_type("builtins.object")
-
-    # Build the members dictionary
-    member_vars: dict[str, tuple[Type, Type, bool, bool]] = (
-        {}
-    )  # name -> (type, init_type, is_classvar, is_final)
+    members: list[MemberDef] = []
 
     for arg in args:
         arg = get_proper_type(arg)
 
-        # Each argument should be a Member[name, typ, quals, init, definer]
         if not isinstance(arg, Instance) or arg.type != member_info.type:
-            # Not a Member type - can't construct protocol
-            return UninhabitedType()
-
+            return None
         if len(arg.args) < 2:
-            return UninhabitedType()
+            return None
 
-        # Extract name and type from Member args
-        name_type = arg.args[0]
-        name = extract_literal_string(name_type)
+        name = extract_literal_string(arg.args[0])
         if name is None:
-            return UninhabitedType()
+            return None
 
         item_type = arg.args[1]
+        if eval_types:
+            item_type = evaluator.eval_proper(item_type)
 
-        # Check qualifiers if present
         is_classvar = False
         is_final = False
-
         if len(arg.args) >= 3:
             for qual in extract_qualifier_strings(arg.args[2]):
                 if qual == "ClassVar":
@@ -1205,50 +1196,102 @@ def _eval_new_protocol(*args: Type, evaluator: TypeLevelEvaluator) -> Type:
         if len(arg.args) >= 4:
             init_type = arg.args[3]
 
-        member_vars[name] = (item_type, init_type, is_classvar, is_final)
+        members.append(MemberDef(name, item_type, init_type, is_classvar, is_final))
 
-    protocol_name = "NewProtocol"
+    return members
 
-    # Create the synthetic protocol TypeInfo
+
+def _build_synthetic_typeinfo(
+    class_name: str, members: list[MemberDef], evaluator: TypeLevelEvaluator
+) -> TypeInfo:
+    """Create a synthetic TypeInfo populated with members.
+
+    Used by NewProtocol to build a TypeInfo carrying member definitions
+    extracted from Member type arguments.
+    """
     # HACK: We create a ClassDef with an empty Block because TypeInfo requires one.
-    # This is purely synthetic and never actually executed.
-    class_def = ClassDef(protocol_name, Block([]))
-    class_def.fullname = f"__typelevel__.{protocol_name}"
+    class_def = ClassDef(class_name, Block([]))
+    class_def.fullname = f"__typelevel__.{class_name}"
 
     info = TypeInfo(SymbolTable(), class_def, "__typelevel__")
     class_def.info = info
 
-    # Mark as protocol
-    info.is_protocol = True
-    info.is_new_protocol = True
-    info.runtime_protocol = False  # These aren't runtime checkable
-
-    # Set up bases - inherit from object (not Protocol, since Protocol is just a marker)
+    object_type = evaluator.api.named_type("builtins.object")
     info.bases = [object_type]
-
-    # HACK: Set up MRO manually since we don't have a full semantic analysis pass.
-    # For a protocol, the MRO should be: [this_protocol, object]
     try:
         calculate_mro(info)
     except Exception:
-        # If MRO calculation fails, set up a minimal one
         # HACK: Minimal MRO setup when calculate_mro fails
         info.mro = [info, object_type.type]
 
-    # Add members to the symbol table
-    for name, (member_type, init_type, is_classvar, is_final) in member_vars.items():
-        var = Var(name, member_type)
+    for m in members:
+        var = Var(m.name, m.type)
         var.info = info
-        var._fullname = f"{info.fullname}.{name}"
-        var.is_classvar = is_classvar
-        var.is_final = is_final
+        var._fullname = f"{info.fullname}.{m.name}"
+        var.is_classvar = m.is_classvar
+        var.is_final = m.is_final
         var.is_initialized_in_class = True
-        var.init_type = init_type
-        # Don't mark as inferred since we have explicit types
+        var.init_type = m.init_type
         var.is_inferred = False
-        info.names[name] = SymbolTableNode(MDEF, var)
+        info.names[m.name] = SymbolTableNode(MDEF, var)
+
+    return info
+
+
+@register_operator("NewProtocol")
+def _eval_new_protocol(*args: Type, evaluator: TypeLevelEvaluator) -> Type:
+    """Evaluate NewProtocol[*Members] -> create a new structural protocol type.
+
+    This creates a synthetic protocol class with members defined by the Member arguments.
+    The protocol type uses structural subtyping.
+    """
+    # TODO: methods are probably in bad shape
+
+    members = _extract_members(args, evaluator)
+    if members is None:
+        return UninhabitedType()
+
+    info = _build_synthetic_typeinfo("NewProtocol", members, evaluator)
+
+    info.is_protocol = True
+    info.is_new_protocol = True
+    info.runtime_protocol = False
 
     return Instance(info, [])
+
+
+@register_operator("UpdateClass")
+def _eval_update_class(*args: Type, evaluator: TypeLevelEvaluator) -> Type:
+    """UpdateClass should not be evaluated as a normal type operator.
+
+    It is only valid as the return type of a class decorator or
+    __init_subclass__, and is handled specially by semanal_main.py
+    via evaluate_update_class().  If we get here (e.g. via get_proper_type
+    expanding the return type annotation), return NoneType since the
+    decorated function/method semantically returns None at runtime.
+    Returning Never here would cause the checker to treat subsequent
+    code as unreachable.
+    """
+    return NoneType()
+
+
+def evaluate_update_class(
+    typ: TypeOperatorType, api: SemanticAnalyzerInterface, ctx: Context | None = None
+) -> list[MemberDef] | None:
+    """Evaluate an UpdateClass TypeOperatorType and return its member definitions.
+
+    Called from semanal_main.py during the post-semanal pass. Eagerly evaluates
+    member types so they are fully resolved before being stored on the target
+    class's TypeInfo.
+
+    Returns None if evaluation fails.
+    """
+    evaluator = TypeLevelEvaluator(api, ctx)
+    try:
+        args = evaluator.flatten_args(typ.args)
+    except (EvaluationStuck, EvaluationOverflow):
+        return None
+    return _extract_members(tuple(args), evaluator, eval_types=True)
 
 
 @register_operator("Length")

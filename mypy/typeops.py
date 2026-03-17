@@ -173,8 +173,8 @@ def type_object_type(info: TypeInfo, named_type: Callable[[str], Instance]) -> P
         return AnyType(TypeOfAny.from_error)
 
     # The two is_valid_constructor() checks ensure this.
-    assert isinstance(new_method.node, (SYMBOL_FUNCBASE_TYPES, Decorator))
-    assert isinstance(init_method.node, (SYMBOL_FUNCBASE_TYPES, Decorator))
+    assert isinstance(new_method.node, (SYMBOL_FUNCBASE_TYPES, Decorator, Var))
+    assert isinstance(init_method.node, (SYMBOL_FUNCBASE_TYPES, Decorator, Var))
 
     init_index = info.mro.index(init_method.node.info)
     new_index = info.mro.index(new_method.node.info)
@@ -189,7 +189,7 @@ def type_object_type(info: TypeInfo, named_type: Callable[[str], Instance]) -> P
         fallback = named_type("builtins.type")
 
     if init_index < new_index:
-        method: FuncBase | Decorator = init_method.node
+        method: FuncBase | Decorator | Var = init_method.node
         is_new = False
     elif init_index > new_index:
         method = new_method.node
@@ -227,6 +227,12 @@ def type_object_type(info: TypeInfo, named_type: Callable[[str], Instance]) -> P
             # achieved in early return above because is_valid_constructor() is False.
             allow_cache = False
         t = function_type(method, fallback)
+    elif isinstance(method, Var):
+        # Var with callable type, e.g. from UpdateClass adding __init__
+        assert method.type is not None
+        proper = get_proper_type(method.type)
+        assert isinstance(proper, FunctionLike)
+        t = proper
     else:
         assert isinstance(method.type, ProperType)
         assert isinstance(method.type, FunctionLike)  # is_valid_constructor() ensures this
@@ -242,12 +248,14 @@ def type_object_type(info: TypeInfo, named_type: Callable[[str], Instance]) -> P
 def is_valid_constructor(n: SymbolNode | None) -> bool:
     """Does this node represents a valid constructor method?
 
-    This includes normal functions, overloaded functions, and decorators
-    that return a callable type.
+    This includes normal functions, overloaded functions, decorators
+    that return a callable type, and Vars with callable types (e.g. from UpdateClass).
     """
     if isinstance(n, SYMBOL_FUNCBASE_TYPES):
         return True
     if isinstance(n, Decorator):
+        return isinstance(get_proper_type(n.type), FunctionLike)
+    if isinstance(n, Var) and n.type is not None:
         return isinstance(get_proper_type(n.type), FunctionLike)
     return False
 

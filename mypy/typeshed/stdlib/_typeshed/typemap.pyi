@@ -206,6 +206,16 @@ class NewTypedDict(Generic[Unpack[_Ts]]):
     ...
 
 @_type_operator
+class UpdateClass(Generic[Unpack[_Ts]]):
+    """
+    Update an existing class with new members.
+    Can only be used as the return type of a class decorator or __init_subclass__.
+    Members with type Never are removed from the class.
+    """
+
+    ...
+
+@_type_operator
 class _NewUnion(Generic[Unpack[_Ts]]):
     """
     Construct a union type from the given type arguments.

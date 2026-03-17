@@ -769,3 +769,163 @@ reveal_type(h)  # N: Revealed type is "NewProtocol[__init__: ClassVar[def (self:
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
+
+
+[case testUpdateClassBasicDecorator]
+# flags: --python-version 3.14
+from typing import Literal, Never, Member, UpdateClass
+
+def add_x[T](cls: type[T]) -> UpdateClass[
+    Member[Literal["x"], int],
+]:
+    ...
+
+@add_x
+class Foo:
+    y: str
+
+reveal_type(Foo.x)  # N: Revealed type is "builtins.int"
+reveal_type(Foo().y)  # N: Revealed type is "builtins.str"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+
+[case testUpdateClassRemoveMember]
+# flags: --python-version 3.14
+from typing import Literal, Never, Member, UpdateClass
+
+def remove_y[T](cls: type[T]) -> UpdateClass[
+    Member[Literal["y"], Never],
+]:
+    ...
+
+@remove_y
+class Foo:
+    x: int
+    y: str
+
+reveal_type(Foo().x)  # N: Revealed type is "builtins.int"
+Foo().y  # E: "Foo" has no attribute "y"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+
+[case testUpdateClassInitSubclass]
+# flags: --python-version 3.14
+from typing import Literal, Never, Member, UpdateClass
+
+class Base:
+    def __init_subclass__[T](cls: type[T]) -> UpdateClass[
+        Member[Literal["tag"], str],
+    ]:
+        ...
+
+class Child(Base):
+    x: int
+
+reveal_type(Child.tag)  # N: Revealed type is "builtins.str"
+reveal_type(Child().x)  # N: Revealed type is "builtins.int"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+
+[case testUpdateClassDataclassLike]
+# flags: --python-version 3.14
+
+from typing import (
+    Callable,
+    Literal,
+    ReadOnly,
+    TypedDict,
+    Never,
+    UpdateClass,
+)
+
+import typing
+
+
+class FieldArgs(TypedDict, total=False):
+    default: ReadOnly[object]
+
+
+class Field[T: FieldArgs](typing.InitField[T]):
+    pass
+
+
+# Extract the default value from a Field's init arg.
+# If the init is a Field, pull out "default"; otherwise use the init itself.
+type GetDefault[Init] = (
+    typing.GetMemberType[
+        typing.GetArg[Init, typing.InitField, Literal[0]],
+        Literal["default"],
+    ]
+    if typing.IsAssignable[Init, Field]
+    else Init
+)
+
+
+# Generate a Member for __init__ from a class's attributes.
+# All params are keyword-only; params with defaults get Literal["keyword", "default"].
+type InitFnType[T] = typing.Member[
+    Literal["__init__"],
+    Callable[
+        typing.Params[
+            typing.Param[Literal["self"], T],
+            *[
+                typing.Param[
+                    p.name,
+                    p.typ,
+                    Literal["keyword"]
+                    if typing.IsAssignable[
+                        GetDefault[p.init],
+                        Never,
+                    ]
+                    else Literal["keyword", "default"],
+                ]
+                for p in typing.Iter[typing.Attrs[T]]
+            ],
+        ],
+        None,
+    ],
+    Literal["ClassVar"],
+]
+
+
+def dataclass_ish[T](cls: type[T]) -> UpdateClass[InitFnType[T]]:
+    ...
+
+
+@dataclass_ish
+class Hero:
+    id: int | None = None
+    name: str
+    age: int | None = Field(default=None)
+    secret_name: str
+
+
+# Note: init_type is not available during semanal (when UpdateClass runs),
+# so all params are required. In the NewProtocol version (evaluated lazily
+# during type checking), defaults ARE detected.
+reveal_type(Hero.__init__)  # N: Revealed type is "def (self: __main__.Hero, *, id: builtins.int | None, name: builtins.str, age: builtins.int | None, secret_name: builtins.str)"
+Hero(id=None, name="Spider-Boy", age=None, secret_name="Pedro Parqueador")
+h = Hero(id=1, name="Spider-Boy", age=16, secret_name="Pedro Parqueador")
+reveal_type(h)  # N: Revealed type is "__main__.Hero"
+
+# Also test a simpler UpdateClass with direct Member
+def add_greet[T](cls: type[T]) -> UpdateClass[
+    typing.Member[Literal["greet"], Callable[[T], str]],
+]:
+    ...
+
+@add_greet
+class Simple:
+    x: int
+
+reveal_type(Simple.greet)  # N: Revealed type is "def (__main__.Simple) -> builtins.str"
+reveal_type(Simple().greet)  # N: Revealed type is "def (__main__.Simple) -> builtins.str"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
