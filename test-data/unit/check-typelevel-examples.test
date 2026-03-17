@@ -903,15 +903,16 @@ class Hero:
     id: int | None = None
     name: str
     age: int | None = Field(default=None)
+    score: float = Field()
     secret_name: str
 
 
-reveal_type(Hero.__init__)  # N: Revealed type is "def (self: __main__.Hero, *, id: builtins.int | None =, name: builtins.str, age: builtins.int | None =, secret_name: builtins.str)"
-Hero(name="Spider-Boy", secret_name="Pedro Parqueador")
-Hero(name="Spider-Boy", secret_name="Pedro Parqueador", id=3)
-Hero(name="Spider-Boy", secret_name="Pedro Parqueador", age=16)
-Hero(name="Spider-Boy")  # E: Missing named argument "secret_name" for "Hero"
-h = Hero(id=1, name="Spider-Boy", age=16, secret_name="Pedro Parqueador")
+reveal_type(Hero.__init__)  # N: Revealed type is "def (self: __main__.Hero, *, id: builtins.int | None =, name: builtins.str, age: builtins.int | None =, score: builtins.float, secret_name: builtins.str)"
+Hero(name="Spider-Boy", secret_name="Pedro Parqueador", score=1.0)
+Hero(name="Spider-Boy", secret_name="Pedro Parqueador", score=1.0, id=3)
+Hero(name="Spider-Boy", secret_name="Pedro Parqueador", score=1.0, age=16)
+Hero(name="Spider-Boy", score=1.0)  # E: Missing named argument "secret_name" for "Hero"
+h = Hero(id=1, name="Spider-Boy", age=16, score=1.0, secret_name="Pedro Parqueador")
 reveal_type(h)  # N: Revealed type is "__main__.Hero"
 
 # Also test a simpler UpdateClass with direct Member
