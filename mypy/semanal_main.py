@@ -508,6 +508,7 @@ def apply_class_plugin_hooks(graph: Graph, scc: list[str], errors: Errors) -> No
                         state.options,
                         tree,
                         errors,
+                        state,
                     ):
                         incomplete = True
 
@@ -519,6 +520,7 @@ def apply_hooks_to_class(
     options: Options,
     file_node: MypyFile,
     errors: Errors,
+    state: State | None = None,
 ) -> bool:
     # TODO: Move more class-related hooks here?
     defn = info.defn
@@ -550,21 +552,27 @@ def apply_hooks_to_class(
 
     # Apply UpdateClass effects from decorators and __init_subclass__
     with self.file_context(file_node, options, info):
-        _apply_update_class_effects(self, info)
+        _apply_update_class_effects(self, info, state)
 
     return ok
 
 
-def _populate_init_types(info: TypeInfo, api: SemanticAnalyzer) -> None:
+def _populate_init_types(info: TypeInfo, state: State | None) -> None:
     """Populate init_type on class Vars that have explicit values.
 
     Normally init_type is set during type checking (checker.py), but
-    UpdateClass needs it during the post-semanal pass. We populate it
-    here from the AST expressions.
+    UpdateClass needs it during the post-semanal pass. We use the
+    TypeChecker's expression checker to infer the rvalue types, which
+    gives accurate results for all expressions (literals, None, Field()
+    calls, etc.).
     """
-    from mypy.constant_fold import constant_fold_expr
     from mypy.nodes import AssignmentStmt, NameExpr
-    from mypy.types import LiteralType, NoneType
+    from mypy.types_utils import try_getting_literal
+
+    if state is None:
+        return
+
+    checker = state.type_checker()
 
     for stmt in info.defn.defs.body:
         if not isinstance(stmt, AssignmentStmt):
@@ -576,44 +584,17 @@ def _populate_init_types(info: TypeInfo, api: SemanticAnalyzer) -> None:
             if not var.has_explicit_value or var.init_type is not None:
                 continue
 
-            rvalue = stmt.rvalue
-
-            # None literal
-            if isinstance(rvalue, NameExpr) and rvalue.fullname == "builtins.None":
-                var.init_type = NoneType()
+            try:
+                rvalue_type = checker.expr_checker.accept(stmt.rvalue)
+            except Exception:
                 continue
 
-            # Simple constant literals (int, str, bool, float)
-            value = constant_fold_expr(rvalue, info.module_name)
-            if value is not None and not isinstance(value, complex):
-                if isinstance(value, bool):
-                    type_name = "builtins.bool"
-                elif isinstance(value, int):
-                    type_name = "builtins.int"
-                elif isinstance(value, str):
-                    type_name = "builtins.str"
-                else:
-                    assert isinstance(value, float)
-                    type_name = "builtins.float"
-                fallback = api.named_type_or_none(type_name)
-                if fallback:
-                    var.init_type = fallback.copy_modified(
-                        last_known_value=LiteralType(value=value, fallback=fallback)
-                    )
-                    continue
-
-            # Fallback: use the var's declared type as a non-Never placeholder.
-            # This ensures fields with defaults are detected as optional,
-            # even if we can't determine the precise init_type.
-            # Full init_type inference (e.g. for Field(default=...)) requires
-            # type checking, which runs later; the NewProtocol/type alias path
-            # gets the precise init_type because it evaluates lazily during
-            # type checking.
-            if var.type is not None:
-                var.init_type = var.type
+            var.init_type = try_getting_literal(rvalue_type)
 
 
-def _apply_update_class_effects(self: SemanticAnalyzer, info: TypeInfo) -> None:
+def _apply_update_class_effects(
+    self: SemanticAnalyzer, info: TypeInfo, state: State | None = None
+) -> None:
     """Apply UpdateClass effects from decorators and __init_subclass__ to a class."""
     from mypy.expandtype import expand_type
     from mypy.nodes import RefExpr
@@ -654,7 +635,7 @@ def _apply_update_class_effects(self: SemanticAnalyzer, info: TypeInfo) -> None:
         # Attrs[T]/Members[T] can see defaults. Only do this once, and
         # only when we actually have an UpdateClass to apply.
         if not init_types_populated:
-            _populate_init_types(info, self)
+            _populate_init_types(info, state)
             init_types_populated = True
 
         # Build substitution map: find type[T] in the first arg and bind T to class instance
