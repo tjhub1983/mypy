@@ -686,3 +686,86 @@ reveal_type(upd_types)  # N: Revealed type is "tuple[builtins.str | None, builti
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
+
+
+[case testTypeLevel_initfntype]
+# flags: --python-version 3.14
+
+from typing import (
+    Callable,
+    Literal,
+    ReadOnly,
+    TypedDict,
+    Never,
+    Self,
+)
+
+import typing
+
+
+class FieldArgs(TypedDict, total=False):
+    default: ReadOnly[object]
+
+
+class Field[T: FieldArgs](typing.InitField[T]):
+    pass
+
+
+# Extract the default value from a Field's init arg.
+# If the init is a Field, pull out "default"; otherwise use the init itself.
+type GetDefault[Init] = (
+    typing.GetMemberType[
+        typing.GetArg[Init, typing.InitField, Literal[0]],
+        Literal["default"],
+    ]
+    if typing.IsAssignable[Init, Field]
+    else Init
+)
+
+
+# Generate a Member for __init__ from a class's attributes.
+# All params are keyword-only; params with defaults get Literal["keyword", "default"].
+type InitFnType[T] = typing.Member[
+    Literal["__init__"],
+    Callable[
+        typing.Params[
+            typing.Param[Literal["self"], T],
+            *[
+                typing.Param[
+                    p.name,
+                    p.typ,
+                    Literal["keyword"]
+                    if typing.IsAssignable[
+                        GetDefault[p.init],
+                        Never,
+                    ]
+                    else Literal["keyword", "default"],
+                ]
+                for p in typing.Iter[typing.Attrs[T]]
+            ],
+        ],
+        None,
+    ],
+    Literal["ClassVar"],
+]
+
+# Use InitFnType to build a protocol with __init__ + all existing members
+type AddInit[T] = typing.NewProtocol[
+    InitFnType[T],
+    *[x for x in typing.Iter[typing.Members[T]]],
+]
+
+
+class Hero:
+    id: int | None = None
+    name: str
+    age: int | None = Field(default=None)
+    secret_name: str
+
+
+h: AddInit[Hero]
+reveal_type(h)  # N: Revealed type is "NewProtocol[__init__: ClassVar[def (self: __main__.Hero, *, id: builtins.int | None =, name: builtins.str, age: builtins.int | None =, secret_name: builtins.str)], id: builtins.int | None = None, name: builtins.str, age: builtins.int | None = ..., secret_name: builtins.str]"
+
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
