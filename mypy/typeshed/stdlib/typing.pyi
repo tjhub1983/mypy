@@ -1192,6 +1192,7 @@ if sys.version_info >= (3, 13):
 # HACK: Always import because its used in mypy internals.
 # FIXME: Don't put this weird internals stuff here.
 from _typeshed.typemap import (
+    _NewCallable as _NewCallable,
     _NewUnion as _NewUnion,
 )
 
@@ -1231,6 +1232,7 @@ if sys.version_info >= (3, 15):
         "NamedDefaultParam",
         "ArgsParam",
         "KwargsParam",
+        "Params",
         # Accessors
         "GetName",
         "GetType",
@@ -1279,6 +1281,7 @@ if sys.version_info >= (3, 15):
         NewProtocol as NewProtocol,
         NewTypedDict as NewTypedDict,
         Param as Param,
+        Params as Params,
         ParamQuals as ParamQuals,
         PosDefaultParam as PosDefaultParam,
         PosParam as PosParam,

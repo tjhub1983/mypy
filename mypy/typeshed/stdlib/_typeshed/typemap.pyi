@@ -87,6 +87,14 @@ NamedDefaultParam = Param[_N, _T, Literal["keyword", "default"]]
 ArgsParam = Param[None, _T, Literal["*"]]
 KwargsParam = Param[None, _T, Literal["**"]]
 
+class Params(Generic[Unpack[_Ts]]):
+    """
+    Wraps a sequence of Param types as the first argument to Callable
+    to distinguish extended callable format from the standard format.
+    """
+
+    ...
+
 # --- Type Introspection Operators ---
 
 _Base = TypeVar("_Base")
@@ -202,6 +210,15 @@ class _NewUnion(Generic[Unpack[_Ts]]):
     """
     Construct a union type from the given type arguments.
     _NewUnion[int, str, bool] evaluates to int | str | bool.
+    """
+
+    ...
+
+@_type_operator
+class _NewCallable(Generic[Unpack[_Ts]]):
+    """
+    Construct a callable type from Param types and a return type.
+    _NewCallable[Param[...], ..., ReturnType] evaluates to a Callable.
     """
 
     ...

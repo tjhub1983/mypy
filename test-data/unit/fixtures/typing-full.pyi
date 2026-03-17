@@ -309,12 +309,25 @@ class NewProtocol(Generic[Unpack[_Ts]]): ...
 @_type_operator
 class _NewUnion(Generic[Unpack[_Ts]]): ...
 
+@_type_operator
+class _NewCallable(Generic[Unpack[_Ts]]): ...
+
 # Member data type for type-level computation
 _Name = TypeVar('_Name')
 _Type = TypeVar('_Type')
 _Quals = TypeVar("_Quals", default=Never)
 _Init = TypeVar("_Init", default=Never)
 _Definer = TypeVar("_Definer", default=Never)
+
+_PQuals = TypeVar("_PQuals", default=Never)
+
+class Param(Generic[_Name, _Type, _PQuals]):
+    """Represents a function parameter for extended callable syntax."""
+    name: _Name
+    type: _Type
+    quals: _PQuals
+
+class Params(Generic[Unpack[_Ts]]): ...
 
 class Member(Generic[_Name, _Type, _Quals, _Init, _Definer]):
     """

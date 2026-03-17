@@ -21,7 +21,14 @@ from mypy.expandtype import expand_type, expand_type_by_instance
 from mypy.maptype import map_instance_to_supertype
 from mypy.mro import calculate_mro
 from mypy.nodes import (
+    ARG_NAMED,
+    ARG_NAMED_OPT,
+    ARG_OPT,
+    ARG_POS,
+    ARG_STAR,
+    ARG_STAR2,
     MDEF,
+    ArgKind,
     Block,
     ClassDef,
     Context,
@@ -35,6 +42,7 @@ from mypy.subtypes import is_subtype
 from mypy.typeops import make_simplified_union, tuple_fallback
 from mypy.types import (
     AnyType,
+    CallableType,
     ComputedType,
     Instance,
     LiteralType,
@@ -623,6 +631,72 @@ def _eval_from_union(arg: Type, *, evaluator: TypeLevelEvaluator) -> Type:
 def _eval_new_union(*args: Type, evaluator: TypeLevelEvaluator) -> Type:
     """Evaluate _NewUnion[*Ts] -> union of all type arguments."""
     return make_simplified_union(list(args))
+
+
+@register_operator("_NewCallable")
+def _eval_new_callable(*args: Type, evaluator: TypeLevelEvaluator) -> Type:
+    """Evaluate _NewCallable[Param1, Param2, ..., ReturnType] -> CallableType.
+
+    The last argument is the return type. All preceding arguments should be
+    Param[name, type, quals] instances describing the callable's parameters.
+    """
+    if len(args) == 0:
+        return AnyType(TypeOfAny.from_error)
+
+    ret_type = args[-1]
+    param_args = args[:-1]
+
+    arg_types: list[Type] = []
+    arg_kinds: list[ArgKind] = []
+    arg_names: list[str | None] = []
+
+    for param in param_args:
+        param = evaluator.eval_proper(param)
+        if not isinstance(param, Instance):
+            # Not a Param instance, skip
+            continue
+        if param.type.fullname not in ("typing.Param", "_typeshed.typemap.Param"):
+            continue
+
+        # Param[name, type, quals]
+        p_args = param.args
+        if len(p_args) < 2:
+            continue
+
+        name = extract_literal_string(get_proper_type(p_args[0]))
+        param_type = p_args[1]
+        quals = extract_qualifier_strings(p_args[2]) if len(p_args) > 2 else []
+
+        qual_set = set(quals)
+        if "*" in qual_set:
+            arg_kinds.append(ARG_STAR)
+            arg_names.append(None)
+        elif "**" in qual_set:
+            arg_kinds.append(ARG_STAR2)
+            arg_names.append(None)
+        elif "keyword" in qual_set:
+            if "default" in qual_set:
+                arg_kinds.append(ARG_NAMED_OPT)
+            else:
+                arg_kinds.append(ARG_NAMED)
+            arg_names.append(name)
+        elif "default" in qual_set:
+            arg_kinds.append(ARG_OPT)
+            arg_names.append(name)
+        else:
+            arg_kinds.append(ARG_POS)
+            arg_names.append(name)
+
+        arg_types.append(param_type)
+
+    fallback = evaluator.api.named_type("builtins.function")
+    return CallableType(
+        arg_types=arg_types,
+        arg_kinds=arg_kinds,
+        arg_names=arg_names,
+        ret_type=ret_type,
+        fallback=fallback,
+    )
 
 
 @register_operator("GetMember")

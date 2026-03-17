@@ -1194,3 +1194,83 @@ draw(nap)  # E: Argument 1 to "draw" has incompatible type "NotAPoint"; expected
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
+
+[case testNewCallableBasic]
+from typing import Callable, Param, Params, Literal
+
+# Basic callable with positional args
+f1: Callable[Params[Param[Literal["a"], int], Param[Literal["b"], str]], bool]
+reveal_type(f1)  # N: Revealed type is "def (a: builtins.int, b: builtins.str) -> builtins.bool"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testNewCallableWithKwargs]
+from typing import Callable, Param, Params, Literal
+
+# Callable with keyword-only args
+f: Callable[Params[
+    Param[Literal["a"], int],
+    Param[Literal["b"], str, Literal["keyword"]],
+], bool]
+reveal_type(f)  # N: Revealed type is "def (a: builtins.int, *, b: builtins.str) -> builtins.bool"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testNewCallableWithDefaults]
+from typing import Callable, Param, Params, Literal
+
+# Callable with default args
+f: Callable[Params[
+    Param[Literal["a"], int],
+    Param[Literal["b"], str, Literal["default"]],
+], bool]
+reveal_type(f)  # N: Revealed type is "def (a: builtins.int, b: builtins.str =) -> builtins.bool"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testNewCallableWithStarArgs]
+from typing import Callable, Param, Params, Literal
+
+# Callable with *args and **kwargs
+f: Callable[Params[
+    Param[Literal["a"], int],
+    Param[None, int, Literal["*"]],
+    Param[None, str, Literal["**"]],
+], bool]
+reveal_type(f)  # N: Revealed type is "def (a: builtins.int, *builtins.int, **builtins.str) -> builtins.bool"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testNewCallableComplex]
+from typing import Callable, Param, Params, Literal
+
+# Complex callable matching PEP example
+f: Callable[Params[
+    Param[Literal["a"], int, Literal["positional"]],
+    Param[Literal["b"], int],
+    Param[Literal["c"], int, Literal["default"]],
+    Param[None, int, Literal["*"]],
+    Param[Literal["d"], int, Literal["keyword"]],
+    Param[Literal["e"], int, Literal["default", "keyword"]],
+    Param[None, int, Literal["**"]],
+], int]
+reveal_type(f)  # N: Revealed type is "def (a: builtins.int, b: builtins.int, c: builtins.int =, *builtins.int, d: builtins.int, e: builtins.int =, **builtins.int) -> builtins.int"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testNewCallableAssignment]
+from typing import Callable, Param, Params, Literal
+
+def real_func(a: int, b: str) -> bool:
+    return True
+
+f: Callable[Params[Param[Literal["a"], int], Param[Literal["b"], str]], bool]
+f = real_func  # OK
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]

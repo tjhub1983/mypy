@@ -1688,6 +1688,16 @@ class TypeAnalyser(SyntheticTypeVisitor[Type], TypeAnalyzerPluginInterface):
                 ret = callable_with_ellipsis(
                     AnyType(TypeOfAny.explicit), ret_type=ret_type, fallback=fallback
                 )
+            elif isinstance(callable_args, UnboundType) and self.refers_to_full_names(
+                callable_args, ["typing.Params", "_typeshed.typemap.Params"]
+            ):
+                # Callable[Params[...], RET] - extended callable syntax.
+                # Rewrite to _NewCallable[...params..., ret_type] type operator.
+                items = self.anal_array(list(callable_args.args) + [ret_type], allow_unpack=True)
+                operator = self.lookup_fully_qualified("typing._NewCallable")
+                assert operator and isinstance(operator.node, TypeInfo)
+                obj_fallback = self.named_type("builtins.object")
+                return TypeOperatorType(operator.node, items, obj_fallback, t.line, t.column)
             else:
                 # Callable[P, RET] (where P is ParamSpec)
                 with self.tvar_scope_frame(namespace=""):
