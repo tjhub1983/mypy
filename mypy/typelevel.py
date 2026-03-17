@@ -542,13 +542,55 @@ def extract_qualifier_strings(typ: Type) -> list[str]:
     return qual_strings
 
 
+def _callable_to_params(evaluator: TypeLevelEvaluator, target: CallableType) -> list[Type]:
+    """Convert a CallableType's parameters into a list of Param[name, type, quals] instances."""
+    param_info = evaluator.get_typemap_type("Param")
+    never = UninhabitedType()
+    params: list[Type] = []
+
+    for arg_type, arg_kind, arg_name in zip(target.arg_types, target.arg_kinds, target.arg_names):
+        if arg_name is not None:
+            name_type: Type = evaluator.literal_str(arg_name)
+        else:
+            name_type = NoneType()
+
+        quals: list[str] = []
+        if arg_kind == ARG_POS:
+            pass  # no quals
+        elif arg_kind == ARG_OPT:
+            quals.append("default")
+        elif arg_kind == ARG_STAR:
+            quals.append("*")
+        elif arg_kind == ARG_NAMED:
+            quals.append("keyword")
+        elif arg_kind == ARG_NAMED_OPT:
+            quals.extend(["keyword", "default"])
+        elif arg_kind == ARG_STAR2:
+            quals.append("**")
+
+        if quals:
+            quals_type: Type = make_simplified_union([evaluator.literal_str(q) for q in quals])
+        else:
+            quals_type = never
+
+        params.append(Instance(param_info.type, [name_type, arg_type, quals_type]))
+
+    return params
+
+
 def _get_args(evaluator: TypeLevelEvaluator, target: Type, base: Type) -> Sequence[Type] | None:
     target = evaluator.eval_proper(target)
     base = evaluator.eval_proper(base)
 
     # TODO: Other cases:
-    # * Callable (and Parameters)
     # * Overloaded
+    # * classmethod/staticmethod (decorated callables)
+
+    if isinstance(target, CallableType) and isinstance(base, CallableType):
+        if not is_subtype(target, base):
+            return None
+        params = _callable_to_params(evaluator, target)
+        return [evaluator.tuple_type(params), target.ret_type]
 
     if isinstance(target, Instance) and isinstance(base, Instance):
         # TODO: base.is_protocol!!
@@ -743,17 +785,21 @@ def _eval_type_get_attr(
     target = evaluator.eval_proper(target_arg)
 
     member_info = evaluator.get_typemap_type("Member")
-    if not isinstance(target, Instance) or target.type != member_info.type:
+    param_info = evaluator.get_typemap_type("Param")
+    if not isinstance(target, Instance) or target.type not in (
+        member_info.type,
+        param_info.type,
+    ):
         name_type = evaluator.eval_proper(name_arg)
         name = extract_literal_string(name_type)
         evaluator.api.fail(
-            f"Dot notation .{name} requires a Member type, got {target}",
+            f"Dot notation .{name} requires a Member or Param type, got {target}",
             evaluator.error_ctx,
             serious=True,
         )
         return UninhabitedType()
 
-    # Direct call bypasses union lifting, which is correct for Member access
+    # Direct call bypasses union lifting, which is correct for Member/Param access
     return _eval_get_member_type(target_arg, name_arg, evaluator=evaluator)
 
 
@@ -891,7 +937,12 @@ def _should_skip_type_info(type_info: TypeInfo, api: SemanticAnalyzerInterface) 
     introspectable for GetMemberType/dot notation on Member instances).
     """
     # TODO: figure out the real rules for this
-    if type_info.fullname == "typing.Member" or type_info.fullname == "_typeshed.typemap.Member":
+    if type_info.fullname in (
+        "typing.Member",
+        "_typeshed.typemap.Member",
+        "typing.Param",
+        "_typeshed.typemap.Param",
+    ):
         return False
     module = api.modules.get(type_info.module_name)
     if module is not None and module.is_stub:
