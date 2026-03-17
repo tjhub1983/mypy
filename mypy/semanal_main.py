@@ -555,6 +555,64 @@ def apply_hooks_to_class(
     return ok
 
 
+def _populate_init_types(info: TypeInfo, api: SemanticAnalyzer) -> None:
+    """Populate init_type on class Vars that have explicit values.
+
+    Normally init_type is set during type checking (checker.py), but
+    UpdateClass needs it during the post-semanal pass. We populate it
+    here from the AST expressions.
+    """
+    from mypy.constant_fold import constant_fold_expr
+    from mypy.nodes import AssignmentStmt, NameExpr
+    from mypy.types import LiteralType, NoneType
+
+    for stmt in info.defn.defs.body:
+        if not isinstance(stmt, AssignmentStmt):
+            continue
+        for lvalue in stmt.lvalues:
+            if not isinstance(lvalue, NameExpr) or not isinstance(lvalue.node, Var):
+                continue
+            var = lvalue.node
+            if not var.has_explicit_value or var.init_type is not None:
+                continue
+
+            rvalue = stmt.rvalue
+
+            # None literal
+            if isinstance(rvalue, NameExpr) and rvalue.fullname == "builtins.None":
+                var.init_type = NoneType()
+                continue
+
+            # Simple constant literals (int, str, bool, float)
+            value = constant_fold_expr(rvalue, info.module_name)
+            if value is not None and not isinstance(value, complex):
+                if isinstance(value, bool):
+                    type_name = "builtins.bool"
+                elif isinstance(value, int):
+                    type_name = "builtins.int"
+                elif isinstance(value, str):
+                    type_name = "builtins.str"
+                else:
+                    assert isinstance(value, float)
+                    type_name = "builtins.float"
+                fallback = api.named_type_or_none(type_name)
+                if fallback:
+                    var.init_type = fallback.copy_modified(
+                        last_known_value=LiteralType(value=value, fallback=fallback)
+                    )
+                    continue
+
+            # Fallback: use the var's declared type as a non-Never placeholder.
+            # This ensures fields with defaults are detected as optional,
+            # even if we can't determine the precise init_type.
+            # Full init_type inference (e.g. for Field(default=...)) requires
+            # type checking, which runs later; the NewProtocol/type alias path
+            # gets the precise init_type because it evaluates lazily during
+            # type checking.
+            if var.type is not None:
+                var.init_type = var.type
+
+
 def _apply_update_class_effects(self: SemanticAnalyzer, info: TypeInfo) -> None:
     """Apply UpdateClass effects from decorators and __init_subclass__ to a class."""
     from mypy.expandtype import expand_type
@@ -572,6 +630,7 @@ def _apply_update_class_effects(self: SemanticAnalyzer, info: TypeInfo) -> None:
     from mypy.typevars import fill_typevars
 
     defn = info.defn
+    init_types_populated = False
 
     def _get_class_instance() -> Instance:
         inst = fill_typevars(info)
@@ -582,12 +641,21 @@ def _apply_update_class_effects(self: SemanticAnalyzer, info: TypeInfo) -> None:
 
     def _resolve_and_apply(func_type: CallableType) -> None:
         """Check if func_type returns UpdateClass, resolve it, and apply to info."""
+        nonlocal init_types_populated
+
         ret_type = func_type.ret_type
         # Don't use get_proper_type here — it would eagerly expand the TypeOperatorType
         if not isinstance(ret_type, TypeOperatorType):
             return
         if ret_type.type.name != "UpdateClass":
             return
+
+        # Populate init_type on class vars before evaluating, so that
+        # Attrs[T]/Members[T] can see defaults. Only do this once, and
+        # only when we actually have an UpdateClass to apply.
+        if not init_types_populated:
+            _populate_init_types(info, self)
+            init_types_populated = True
 
         # Build substitution map: find type[T] in the first arg and bind T to class instance
         env = {}
