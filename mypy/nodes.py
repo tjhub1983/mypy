@@ -4261,6 +4261,8 @@ class TypeInfo(SymbolNode):
                 self.is_final,
                 self.is_disjoint_base,
                 self.is_intersection,
+                self.is_type_operator,
+                self.is_new_protocol,
             ],
         )
         write_json(data, self.metadata)
@@ -4334,7 +4336,9 @@ class TypeInfo(SymbolNode):
             ti.is_final,
             ti.is_disjoint_base,
             ti.is_intersection,
-        ) = read_flags(data, num_flags=11)
+            ti.is_type_operator,
+            ti.is_new_protocol,
+        ) = read_flags(data, num_flags=13)
         ti.metadata = read_json(data)
         tag = read_tag(data)
         if tag != LITERAL_NONE:
