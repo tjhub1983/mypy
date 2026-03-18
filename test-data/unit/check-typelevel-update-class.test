@@ -1,0 +1,66 @@
+-- TODO: Test inheritance more carefully:
+--   - Multiple bases with __init_subclass__ returning UpdateClass (reverse MRO order)
+--   - UpdateClass on a class that is itself subclassed (do children see the added members?)
+--   - UpdateClass adding a member that conflicts with an inherited member
+--   - Diamond inheritance with UpdateClass on multiple paths
+--   - UpdateClass + explicit __init__ on the same class
+
+[case testUpdateClassBasicDecorator]
+# flags: --python-version 3.14
+from typing import Literal, Never, Member, UpdateClass
+
+def add_x[T](cls: type[T]) -> UpdateClass[
+    Member[Literal["x"], int],
+]:
+    ...
+
+@add_x
+class Foo:
+    y: str
+
+reveal_type(Foo.x)  # N: Revealed type is "builtins.int"
+reveal_type(Foo().y)  # N: Revealed type is "builtins.str"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+
+[case testUpdateClassRemoveMember]
+# flags: --python-version 3.14
+from typing import Literal, Never, Member, UpdateClass
+
+def remove_y[T](cls: type[T]) -> UpdateClass[
+    Member[Literal["y"], Never],
+]:
+    ...
+
+@remove_y
+class Foo:
+    x: int
+    y: str
+
+reveal_type(Foo().x)  # N: Revealed type is "builtins.int"
+Foo().y  # E: "Foo" has no attribute "y"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+
+[case testUpdateClassInitSubclass]
+# flags: --python-version 3.14
+from typing import Literal, Never, Member, UpdateClass
+
+class Base:
+    def __init_subclass__[T](cls: type[T]) -> UpdateClass[
+        Member[Literal["tag"], str],
+    ]:
+        ...
+
+class Child(Base):
+    x: int
+
+reveal_type(Child.tag)  # N: Revealed type is "builtins.str"
+reveal_type(Child().x)  # N: Revealed type is "builtins.int"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]

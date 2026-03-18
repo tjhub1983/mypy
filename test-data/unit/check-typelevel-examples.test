@@ -688,150 +688,6 @@ reveal_type(upd_types)  # N: Revealed type is "tuple[builtins.str | None, builti
 [typing fixtures/typing-full.pyi]
 
 
-[case testTypeLevel_initfntype]
-# flags: --python-version 3.14
-
-from typing import (
-    Callable,
-    Literal,
-    ReadOnly,
-    TypedDict,
-    Never,
-    Self,
-)
-
-import typing
-
-
-class FieldArgs(TypedDict, total=False):
-    default: ReadOnly[object]
-
-
-class Field[T: FieldArgs](typing.InitField[T]):
-    pass
-
-
-# Extract the default value from a Field's init arg.
-# If the init is a Field, pull out "default"; otherwise use the init itself.
-type GetDefault[Init] = (
-    typing.GetMemberType[
-        typing.GetArg[Init, typing.InitField, Literal[0]],
-        Literal["default"],
-    ]
-    if typing.IsAssignable[Init, Field]
-    else Init
-)
-
-
-# Generate a Member for __init__ from a class's attributes.
-# All params are keyword-only; params with defaults get Literal["keyword", "default"].
-type InitFnType[T] = typing.Member[
-    Literal["__init__"],
-    Callable[
-        typing.Params[
-            typing.Param[Literal["self"], T],
-            *[
-                typing.Param[
-                    p.name,
-                    p.typ,
-                    Literal["keyword"]
-                    if typing.IsAssignable[
-                        GetDefault[p.init],
-                        Never,
-                    ]
-                    else Literal["keyword", "default"],
-                ]
-                for p in typing.Iter[typing.Attrs[T]]
-            ],
-        ],
-        None,
-    ],
-    Literal["ClassVar"],
-]
-
-# Use InitFnType to build a protocol with __init__ + all existing members
-type AddInit[T] = typing.NewProtocol[
-    InitFnType[T],
-    *[x for x in typing.Iter[typing.Members[T]]],
-]
-
-
-class Hero:
-    id: int | None = None
-    name: str
-    age: int | None = Field(default=None)
-    secret_name: str
-
-
-h: AddInit[Hero]
-reveal_type(h)  # N: Revealed type is "NewProtocol[__init__: ClassVar[def (self: __main__.Hero, *, id: builtins.int | None =, name: builtins.str, age: builtins.int | None =, secret_name: builtins.str)], id: builtins.int | None = None, name: builtins.str, age: builtins.int | None = ..., secret_name: builtins.str]"
-
-
-[builtins fixtures/typelevel.pyi]
-[typing fixtures/typing-full.pyi]
-
-
-[case testUpdateClassBasicDecorator]
-# flags: --python-version 3.14
-from typing import Literal, Never, Member, UpdateClass
-
-def add_x[T](cls: type[T]) -> UpdateClass[
-    Member[Literal["x"], int],
-]:
-    ...
-
-@add_x
-class Foo:
-    y: str
-
-reveal_type(Foo.x)  # N: Revealed type is "builtins.int"
-reveal_type(Foo().y)  # N: Revealed type is "builtins.str"
-
-[builtins fixtures/typelevel.pyi]
-[typing fixtures/typing-full.pyi]
-
-
-[case testUpdateClassRemoveMember]
-# flags: --python-version 3.14
-from typing import Literal, Never, Member, UpdateClass
-
-def remove_y[T](cls: type[T]) -> UpdateClass[
-    Member[Literal["y"], Never],
-]:
-    ...
-
-@remove_y
-class Foo:
-    x: int
-    y: str
-
-reveal_type(Foo().x)  # N: Revealed type is "builtins.int"
-Foo().y  # E: "Foo" has no attribute "y"
-
-[builtins fixtures/typelevel.pyi]
-[typing fixtures/typing-full.pyi]
-
-
-[case testUpdateClassInitSubclass]
-# flags: --python-version 3.14
-from typing import Literal, Never, Member, UpdateClass
-
-class Base:
-    def __init_subclass__[T](cls: type[T]) -> UpdateClass[
-        Member[Literal["tag"], str],
-    ]:
-        ...
-
-class Child(Base):
-    x: int
-
-reveal_type(Child.tag)  # N: Revealed type is "builtins.str"
-reveal_type(Child().x)  # N: Revealed type is "builtins.int"
-
-[builtins fixtures/typelevel.pyi]
-[typing fixtures/typing-full.pyi]
-
-
 [case testUpdateClassDataclassLike]
 # flags: --python-version 3.14
 
@@ -907,6 +763,25 @@ class Hero:
     secret_name: str
 
 
+class Model:
+    def __init_subclass__[T](
+        cls: type[T],
+    ) -> typing.UpdateClass[
+        # Add the computed __init__ function
+        InitFnType[T],
+    ]:
+        pass
+
+
+class Hero2(Model):
+    id: int | None = None
+    name: str
+    age: int | None = Field(default=None)
+    score: float = Field()
+    secret_name: str
+
+
+
 reveal_type(Hero.__init__)  # N: Revealed type is "def (self: __main__.Hero, *, id: builtins.int | None =, name: builtins.str, age: builtins.int | None =, score: builtins.float, secret_name: builtins.str)"
 Hero(name="Spider-Boy", secret_name="Pedro Parqueador", score=1.0)
 Hero(name="Spider-Boy", secret_name="Pedro Parqueador", score=1.0, id=3)
@@ -915,18 +790,16 @@ Hero(name="Spider-Boy", score=1.0)  # E: Missing named argument "secret_name" fo
 h = Hero(id=1, name="Spider-Boy", age=16, score=1.0, secret_name="Pedro Parqueador")
 reveal_type(h)  # N: Revealed type is "__main__.Hero"
 
-# Also test a simpler UpdateClass with direct Member
-def add_greet[T](cls: type[T]) -> UpdateClass[
-    typing.Member[Literal["greet"], Callable[[T], str]],
-]:
-    ...
 
-@add_greet
-class Simple:
-    x: int
 
-reveal_type(Simple.greet)  # N: Revealed type is "def (__main__.Simple) -> builtins.str"
-reveal_type(Simple().greet)  # N: Revealed type is "def (__main__.Simple) -> builtins.str"
+reveal_type(Hero2.__init__)  # N: Revealed type is "def (self: __main__.Hero2, *, id: builtins.int | None =, name: builtins.str, age: builtins.int | None =, score: builtins.float, secret_name: builtins.str)"
+Hero2(name="Spider-Boy", secret_name="Pedro Parqueador", score=1.0)
+Hero2(name="Spider-Boy", secret_name="Pedro Parqueador", score=1.0, id=3)
+Hero2(name="Spider-Boy", secret_name="Pedro Parqueador", score=1.0, age=16)
+Hero2(name="Spider-Boy", score=1.0)  # E: Missing named argument "secret_name" for "Hero2"
+h2 = Hero2(id=1, name="Spider-Boy", age=16, score=1.0, secret_name="Pedro Parqueador")
+reveal_type(h2)  # N: Revealed type is "__main__.Hero2"
+
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
