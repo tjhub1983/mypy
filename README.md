@@ -1,10 +1,15 @@
 # PEP 827: Type-Level Computation — Prototype Implementation
 
-This is a prototype implementation of [PEP 827](https://peps.python.org/pep-0827/) (Type Manipulation) in mypy.
+This is a prototype implementation of [PEP
+827](https://peps.python.org/pep-0827/) (Type Manipulation) in mypy.
 
 The PEP introduces type-level computation operators for introspecting and constructing types.
 
-Most of the main features are prototyped, and this should be suitable for experimentation, but it it not yet production quality or particularly ready to be a PR.
+Most of the main features are prototyped, and this should be suitable
+for experimentation, but it it not yet production quality or ready to
+be a PR yet. (This prototype has been AI assisted, and at least some
+slop has made it in that will need to be fixed; it might benefit from
+a full history rewrite, also.)
 
 For the original mypy README, see [REAL_README.md](REAL_README.md).
 
