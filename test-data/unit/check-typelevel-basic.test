@@ -1067,6 +1067,23 @@ takes_proto(b)  # E: Argument 1 to "takes_proto" has incompatible type "Bad"; ex
 [typing fixtures/typing-full.pyi]
 
 
+[case testTypeOperatorNewProtocolIncompatible]
+# flags: --python-version 3.14
+
+from typing import NewProtocol, Member, Literal
+
+a0: NewProtocol[
+    Member[Literal["foo"], str],
+]
+b0: NewProtocol[
+    Member[Literal["bar"], int],
+]
+a0 = b0  # E: Incompatible types in assignment (expression has type "NewProtocol[bar: int]", variable has type "NewProtocol[foo: str]")
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+
 [case testTypeOperatorNewProtocolRecursive1]
 # flags: --python-version 3.14
 

@@ -1201,6 +1201,9 @@ def _extract_members(
     return members
 
 
+_synthetic_type_counter = 0
+
+
 def _build_synthetic_typeinfo(
     class_name: str, members: list[MemberDef], evaluator: TypeLevelEvaluator
 ) -> TypeInfo:
@@ -1209,9 +1212,14 @@ def _build_synthetic_typeinfo(
     Used by NewProtocol to build a TypeInfo carrying member definitions
     extracted from Member type arguments.
     """
+    global _synthetic_type_counter
+    _synthetic_type_counter += 1
+
     # HACK: We create a ClassDef with an empty Block because TypeInfo requires one.
+    # Each synthetic type needs a unique fullname so that nominal subtype checks
+    # (has_base) don't incorrectly treat distinct synthetic types as related.
     class_def = ClassDef(class_name, Block([]))
-    class_def.fullname = f"__typelevel__.{class_name}"
+    class_def.fullname = f"__typelevel__.{class_name}.{_synthetic_type_counter}"
 
     info = TypeInfo(SymbolTable(), class_def, "__typelevel__")
     class_def.info = info
