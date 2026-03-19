@@ -26,6 +26,7 @@ For the original mypy README, see [REAL_README.md](REAL_README.md).
 - **Class modification**: `UpdateClass[*Members]` as return type of decorators / `__init_subclass__`
 - **InitField**: Keyword argument capture with literal type inference
 - **Callable introspection**: `GetArg[SomeCallable, Callable, Literal[0]]` returns `Param` types
+- Incremental mode
 
 ## What's not yet implemented
 
@@ -35,7 +36,8 @@ For the original mypy README, see [REAL_README.md](REAL_README.md).
 - `any(comprehension)` / `all(comprehension)` — quantification over type booleans
 - `classmethod`/`staticmethod` representation in type-level computation
 
-- any attempt to make it perform well
+- Any attempt to make it perform well
+- Fine-grained mode is currently broken
 
 ## Key files
 

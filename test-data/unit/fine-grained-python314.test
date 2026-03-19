@@ -15,3 +15,151 @@ LiteralString = str
 [out]
 ==
 main:2: error: Incompatible types in assignment (expression has type "Template", variable has type "str")
+
+[case testFineGrainedNewProtocol-xfail]
+# flags: --python-version 3.14
+import a
+import b
+
+[file a.py]
+
+from typing import NewProtocol, Member, Literal, Iter
+
+# Basic NewProtocol creation
+type MyProto = NewProtocol[
+    Member[Literal["x"], int],
+    Member[Literal["y"], str],
+]
+x: MyProto
+
+type LinkedList[T] = NewProtocol[
+    Member[Literal["data"], T],
+    Member[Literal["next"], LinkedList[T]],
+]
+
+z: LinkedList[str]
+
+lol: tuple[*[t for t in Iter[tuple[MyProto]]]]
+
+asdf: NewProtocol[
+    Member[Literal["x"], int],
+    Member[Literal["y"], str],
+]
+
+[file b.py]
+from a import MyProto, LinkedList
+from typing import NewProtocol, Member, Literal
+
+x: MyProto
+
+class Good:
+    x: int
+    y: str
+
+def takes_proto(p: MyProto) -> None:
+    pass
+
+takes_proto(Good())
+
+z: LinkedList[str]
+
+# A different NewProtocol that should be incompatible with MyProto
+type OtherProto = NewProtocol[
+    Member[Literal["bar"], int],
+]
+other: OtherProto
+x = other
+
+[file b.py.2]
+from a import MyProto, LinkedList
+from typing import NewProtocol, Member, Literal
+
+x: MyProto
+
+class Good:
+    x: int
+    y: str
+
+def takes_proto(p: MyProto) -> None:
+    pass
+
+takes_proto(Good())
+
+z: LinkedList[str]
+
+# A different NewProtocol that should be incompatible with MyProto
+type OtherProto = NewProtocol[
+    Member[Literal["bar"], int],
+]
+other: OtherProto
+x = other
+
+# dummy change
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+[out]
+b.py:22: error: Incompatible types in assignment (expression has type "NewProtocol[bar: int]", variable has type "NewProtocol[x: int, y: str]")
+==
+b.py:22: error: Incompatible types in assignment (expression has type "NewProtocol[bar: int]", variable has type "NewProtocol[x: int, y: str]")
+
+[case testFineGrainedUpdateClassWithNewProtocol-xfail]
+# flags: --python-version 3.14
+import a
+import b
+
+[file a.py]
+from typing import Literal, Member, NewProtocol, UpdateClass
+
+type MyProto = NewProtocol[
+    Member[Literal["x"], int],
+    Member[Literal["y"], str],
+]
+
+def add_proto[T](cls: type[T]) -> UpdateClass[
+    Member[Literal["proto"], MyProto],
+]:
+    ...
+
+@add_proto
+class Foo:
+    z: float
+
+[file b.py]
+from a import Foo, MyProto
+
+reveal_type(Foo().proto)
+reveal_type(Foo().z)
+
+class Good:
+    x: int
+    y: str
+
+g: Good
+p: MyProto
+p = g
+
+[file b.py.2]
+from a import Foo, MyProto
+
+reveal_type(Foo().proto)
+reveal_type(Foo().z)
+
+class Good:
+    x: int
+    y: str
+
+g: Good
+p: MyProto
+p = g
+
+# dummy change
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+[out]
+b.py:3: note: Revealed type is "NewProtocol[x: builtins.int, y: builtins.str]"
+b.py:4: note: Revealed type is "builtins.float"
+==
+b.py:3: note: Revealed type is "NewProtocol[x: builtins.int, y: builtins.str]"
+b.py:4: note: Revealed type is "builtins.float"
