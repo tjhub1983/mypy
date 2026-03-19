@@ -1931,6 +1931,11 @@ class Instance(ProperType):
 
     def serialize(self) -> JsonDict | str:
         assert self.type is not None
+        # Synthetic NewProtocol types can't be looked up by fullname on
+        # deserialization, so serialize the unevaluated constructor instead.
+        # It will be re-evaluated on load.
+        if self.type.new_protocol_constructor is not None:
+            return self.type.new_protocol_constructor.serialize()
         type_ref = self.type.fullname
         if not self.args and not self.last_known_value and not self.extra_attrs:
             return type_ref
@@ -1965,6 +1970,11 @@ class Instance(ProperType):
         return inst
 
     def write(self, data: WriteBuffer) -> None:
+        # Synthetic NewProtocol types can't be looked up by fullname on
+        # deserialization, so serialize the unevaluated constructor instead.
+        if self.type.new_protocol_constructor is not None:
+            self.type.new_protocol_constructor.write(data)
+            return
         write_tag(data, INSTANCE)
         if not self.args and not self.last_known_value and not self.extra_attrs:
             type_ref = self.type.fullname

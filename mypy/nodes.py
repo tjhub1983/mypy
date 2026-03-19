@@ -3592,7 +3592,7 @@ class TypeInfo(SymbolNode):
         "dataclass_transform_spec",
         "is_type_check_only",
         "is_type_operator",
-        "is_new_protocol",
+        "new_protocol_constructor",
         "deprecated",
         "type_object_type",
     )
@@ -3753,8 +3753,14 @@ class TypeInfo(SymbolNode):
     # Type operators are used for type-level computation (e.g., GetArg, Members, etc.)
     is_type_operator: bool
 
-    # Is set to `True` for synthetic protocol types created by NewProtocol[...]
-    is_new_protocol: bool
+    # For synthetic protocol types created by NewProtocol[...], stores the
+    # unevaluated TypeOperatorType so it can be re-evaluated on cache load
+    # instead of trying to serialize the synthetic TypeInfo.
+    new_protocol_constructor: mypy.types.TypeOperatorType | None
+
+    @property
+    def is_new_protocol(self) -> bool:
+        return self.new_protocol_constructor is not None
 
     # The type's deprecation message (in case it is deprecated)
     deprecated: str | None
@@ -3776,7 +3782,6 @@ class TypeInfo(SymbolNode):
         "is_disjoint_base",
         "is_intersection",
         "is_type_operator",
-        "is_new_protocol",
     ]
 
     def __init__(self, names: SymbolTable, defn: ClassDef, module_name: str) -> None:
@@ -3825,7 +3830,7 @@ class TypeInfo(SymbolNode):
         self.dataclass_transform_spec = None
         self.is_type_check_only = False
         self.is_type_operator = False
-        self.is_new_protocol = False
+        self.new_protocol_constructor = None
         self.deprecated = None
         self.type_object_type = None
 
@@ -4262,7 +4267,6 @@ class TypeInfo(SymbolNode):
                 self.is_disjoint_base,
                 self.is_intersection,
                 self.is_type_operator,
-                self.is_new_protocol,
             ],
         )
         write_json(data, self.metadata)
@@ -4337,8 +4341,7 @@ class TypeInfo(SymbolNode):
             ti.is_disjoint_base,
             ti.is_intersection,
             ti.is_type_operator,
-            ti.is_new_protocol,
-        ) = read_flags(data, num_flags=13)
+        ) = read_flags(data, num_flags=12)
         ti.metadata = read_json(data)
         tag = read_tag(data)
         if tag != LITERAL_NONE:

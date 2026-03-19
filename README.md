@@ -43,3 +43,12 @@ For the original mypy README, see [REAL_README.md](REAL_README.md).
 - `mypy/typeanal.py` — Desugaring of conditional types, comprehensions, dot notation, extended callables
 - `mypy/typeshed/stdlib/_typeshed/typemap.pyi` — Stub declarations for all operators and data types
 - `test-data/unit/check-typelevel-*.test` — Test suite
+
+## Some implementation notes
+
+- Evaluating `NewProtocol` creates a new anonymous `TypeInfo` that
+  doesn't go into any symbol tables. That `TypeInfo` hangs on to the
+  `NewProtocol` invocation that created it, and when we serialize
+  `Instance`s that refer to it, we serialize the `NewProtocol`
+  invocation instead. This allows us to avoid needing to serialize the
+  anonymous `TypeInfo`s.

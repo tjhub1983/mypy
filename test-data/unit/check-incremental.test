@@ -371,6 +371,69 @@ tmp/b.py:22: error: Incompatible types in assignment (expression has type "NewPr
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
 
+
+[case testIncrementalUpdateClassWithNewProtocol]
+# flags: --python-version 3.14
+import a
+import b
+
+[file a.py]
+from typing import Literal, Member, NewProtocol, UpdateClass
+
+type MyProto = NewProtocol[
+    Member[Literal["x"], int],
+    Member[Literal["y"], str],
+]
+
+def add_proto[T](cls: type[T]) -> UpdateClass[
+    Member[Literal["proto"], MyProto],
+]:
+    ...
+
+@add_proto
+class Foo:
+    z: float
+
+[file b.py]
+from a import Foo, MyProto
+
+reveal_type(Foo().proto)
+reveal_type(Foo().z)
+
+class Good:
+    x: int
+    y: str
+
+g: Good
+p: MyProto
+p = g
+
+[file b.py.2]
+from a import Foo, MyProto
+
+reveal_type(Foo().proto)
+reveal_type(Foo().z)
+
+class Good:
+    x: int
+    y: str
+
+g: Good
+p: MyProto
+p = g
+
+# dummy change
+
+[out]
+tmp/b.py:3: note: Revealed type is "NewProtocol[x: builtins.int, y: builtins.str]"
+tmp/b.py:4: note: Revealed type is "builtins.float"
+[out2]
+tmp/b.py:3: note: Revealed type is "NewProtocol[x: builtins.int, y: builtins.str]"
+tmp/b.py:4: note: Revealed type is "builtins.float"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
 [case testIncrementalMethodInterfaceChange]
 import mod1
 

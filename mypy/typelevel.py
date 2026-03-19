@@ -1262,7 +1262,8 @@ def _eval_new_protocol(*args: Type, evaluator: TypeLevelEvaluator) -> Type:
     info = _build_synthetic_typeinfo("NewProtocol", members, evaluator)
 
     info.is_protocol = True
-    info.is_new_protocol = True
+    assert evaluator._current_op is not None
+    info.new_protocol_constructor = evaluator._current_op
     info.runtime_protocol = False
 
     return Instance(info, [])
