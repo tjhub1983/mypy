@@ -48,6 +48,8 @@ if sys.version_info < (3, 11):
     typecheck_files.remove("check-python311.test")
 if sys.version_info < (3, 12):
     typecheck_files.remove("check-python312.test")
+    typecheck_files = [f for f in typecheck_files if "typelevel" not in f]
+    typecheck_files.remove("check-kwargs-unpack-typevar.test")
 if sys.version_info < (3, 13):
     typecheck_files.remove("check-python313.test")
 if sys.version_info < (3, 14):

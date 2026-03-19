@@ -244,6 +244,7 @@ def baz() -> int:
 import a
 [file a.py]
 from typing import (
+    TypeVar,
     NewTypedDict,
     Iter,
     Attrs,
@@ -252,7 +253,8 @@ from typing import (
     Member,
 )
 
-type PropsOnly[T] = list[
+T = TypeVar("T")
+PropsOnly = list[
     NewTypedDict[
         *[
             Member[GetName[p], GetType[p]]
@@ -262,6 +264,7 @@ type PropsOnly[T] = list[
 ]
 [file a.py.2]
 from typing import (
+    TypeVar,
     NewTypedDict,
     Iter,
     Attrs,
@@ -270,7 +273,8 @@ from typing import (
     Member,
 )
 
-type PropsOnly[T] = list[
+T = TypeVar("T")
+PropsOnly = list[
     NewTypedDict[
         *[
             Member[GetName[p], GetType[p]]
@@ -290,16 +294,17 @@ import b
 
 [file a.py]
 
-from typing import NewProtocol, Member, Literal, Iter
+from typing import TypeVar, NewProtocol, Member, Literal, Iter
 
 # Basic NewProtocol creation
-type MyProto = NewProtocol[
+MyProto = NewProtocol[
     Member[Literal["x"], int],
     Member[Literal["y"], str],
 ]
 x: MyProto
 
-type LinkedList[T] = NewProtocol[
+T = TypeVar("T")
+LinkedList = NewProtocol[
     Member[Literal["data"], T],
     Member[Literal["next"], LinkedList[T]],
 ]
@@ -331,7 +336,7 @@ takes_proto(Good())
 z: LinkedList[str]
 
 # A different NewProtocol that should be incompatible with MyProto
-type OtherProto = NewProtocol[
+OtherProto = NewProtocol[
     Member[Literal["bar"], int],
 ]
 other: OtherProto
@@ -355,7 +360,7 @@ takes_proto(Good())
 z: LinkedList[str]
 
 # A different NewProtocol that should be incompatible with MyProto
-type OtherProto = NewProtocol[
+OtherProto = NewProtocol[
     Member[Literal["bar"], int],
 ]
 other: OtherProto
@@ -378,14 +383,15 @@ import a
 import b
 
 [file a.py]
-from typing import Literal, Member, NewProtocol, UpdateClass
+from typing import TypeVar, Literal, Member, NewProtocol, UpdateClass
 
-type MyProto = NewProtocol[
+MyProto = NewProtocol[
     Member[Literal["x"], int],
     Member[Literal["y"], str],
 ]
 
-def add_proto[T](cls: type[T]) -> UpdateClass[
+T = TypeVar("T")
+def add_proto(cls: type[T]) -> UpdateClass[
     Member[Literal["proto"], MyProto],
 ]:
     ...

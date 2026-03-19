@@ -2231,7 +2231,7 @@ def f(x: int, y: list[str]):
 _testStrictEqualityWithList.py:3: error: Non-overlapping container check (element type: "int", container item type: "str")
 
 [case testTypeLevel]
-# flags: --python-version 3.15
+# flags: --python-version=3.15
 from __future__ import annotations
 
 from typing import (
