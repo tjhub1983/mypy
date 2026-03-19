@@ -107,11 +107,7 @@ def expr_to_unanalyzed_type(
             before_dot = expr_to_unanalyzed_type(
                 expr.expr, options, allow_new_syntax, expr, lookup_qualified=lookup_qualified
             )
-            attr_literal = UnboundType(
-                "Literal",
-                [RawExpressionType(expr.name, "builtins.str", line=expr.line)],
-                line=expr.line,
-            )
+            attr_literal = RawExpressionType(expr.name, "builtins.str", line=expr.line)
             return UnboundType(
                 "__builtins__._TypeGetAttr",
                 [before_dot, attr_literal],

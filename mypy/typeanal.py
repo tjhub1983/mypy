@@ -1163,13 +1163,54 @@ class TypeAnalyser(SyntheticTypeVisitor[Type], TypeAnalyzerPluginInterface):
 
         Returns a TypeOperatorType that will be expanded later.
         """
+        # Convert any RawExpressionType args (e.g. from dot notation desugaring)
+        # to LiteralType before analysis, since bare RawExpressionType would be
+        # rejected by visit_raw_expression_type.
+        converted_args: list[Type] = []
+        for arg in t.args:
+            if isinstance(arg, RawExpressionType) and arg.literal_value is not None:
+                fallback = self.named_type(arg.base_type_name)
+                converted_args.append(
+                    LiteralType(arg.literal_value, fallback, line=arg.line, column=arg.column)
+                )
+            else:
+                converted_args.append(arg)
+
         # Analyze all type arguments
         an_args = self.anal_array(
-            t.args,
+            converted_args,
             allow_param_spec=True,
             allow_param_spec_literals=type_info.has_param_spec_type,
             allow_unpack=True,
         )
+
+        # For _TypeGetAttr, eagerly check that the first arg is a type that
+        # supports dot notation. If it's already a concrete type like
+        # tuple[int, str] or a Callable, we can report the error now rather
+        # than deferring to lazy evaluation (which may never happen for
+        # unused function parameters).
+        # TODO: This eager check is a workaround for the fact that type
+        # operator evaluation is lazy — if a function parameter's type is
+        # never used, the operator is never evaluated and the error is
+        # never reported. We may need a more principled approach to
+        # ensuring type-level errors are always surfaced.
+        if type_info.name == "_TypeGetAttr" and len(an_args) >= 2:
+            target = get_proper_type(an_args[0])
+            if isinstance(target, (Instance, TupleType, CallableType)):
+                is_valid = False
+                if isinstance(target, Instance) and (
+                    target.type.is_type_operator or target.type.name in ("Member", "Param")
+                ):
+                    is_valid = True
+                if not is_valid:
+                    name = None
+                    name_type = get_proper_type(an_args[1])
+                    if isinstance(name_type, LiteralType) and isinstance(name_type.value, str):
+                        name = name_type.value
+                    self.fail(
+                        f"Dot notation .{name} requires a Member or Param type, got {target}", t
+                    )
+                    return UninhabitedType()
 
         # TODO: different fallbacks for different types
         fallback = self.named_type("builtins.object")

@@ -34,26 +34,38 @@ def f(x):  # E: Invalid type comment or annotation
 # All of these should not crash
 from typing import Callable, Tuple, Iterable
 
-x: Tuple[int, str].x # E: Invalid type comment or annotation
-a: Iterable[x].x # E: Invalid type comment or annotation
+x: Tuple[int, str].x # E: Dot notation .x requires a Member or Param type, got tuple[int, str]
+a: Iterable[x].x  # E: Dot notation .x requires a Member or Param type, got typing.Iterable[x?] \
+                   # E: Variable "__main__.x" is not valid as a type \
+                   # N: See https://mypy.readthedocs.io/en/stable/common_issues.html#variables-vs-type-aliases
 b: Tuple[x][x] # E: Invalid type comment or annotation
 c: Iterable[x][x] # E: Invalid type comment or annotation
 d: Callable[..., int][x] # E: Invalid type comment or annotation
-e: Callable[..., int].x # E: Invalid type comment or annotation
+e: Callable[..., int].x # E: Dot notation .x requires a Member or Param type, got def (*Any, **Any) -> int
 
-f = None # type: Tuple[int, str].x # E: Invalid type comment or annotation
-g = None # type: Iterable[x].x # E: Invalid type comment or annotation
+f = None # type: Tuple[int, str].x  # E: Dot notation .x requires a Member or Param type, got tuple[int, str] \
+                                    # E: Incompatible types in assignment (expression has type "None", variable has type "Never")
+g = None # type: Iterable[x].x  # E: Variable "__main__.x" is not valid as a type \
+                                # N: See https://mypy.readthedocs.io/en/stable/common_issues.html#variables-vs-type-aliases \
+                                # E: Dot notation .x requires a Member or Param type, got typing.Iterable[x?] \
+                                # E: Incompatible types in assignment (expression has type "None", variable has type "Never")
 h = None # type: Tuple[x][x] # E: Invalid type comment or annotation
 i = None # type: Iterable[x][x] # E: Invalid type comment or annotation
 j = None # type: Callable[..., int][x] # E: Invalid type comment or annotation
-k = None # type: Callable[..., int].x # E: Invalid type comment or annotation
+k = None # type: Callable[..., int].x  # E: Dot notation .x requires a Member or Param type, got def (*Any, **Any) -> int \
+                                       # E: Incompatible types in assignment (expression has type "None", variable has type "Never")
 
-def f1(x: Tuple[int, str].x) -> None: pass # E: Invalid type comment or annotation
-def f2(x: Iterable[x].x) -> None: pass # E: Invalid type comment or annotation
+def f1(x: Tuple[int, str].x) -> None: pass  # E: Dot notation .x requires a Member or Param type, got tuple[int, str]
+def f2(x: Iterable[x].x) -> None: pass  # E: Dot notation .x requires a Member or Param type, got typing.Iterable[x?] \
+                                         # E: Variable "__main__.x" is not valid as a type \
+                                         # N: See https://mypy.readthedocs.io/en/stable/common_issues.html#variables-vs-type-aliases
 def f3(x: Tuple[x][x]) -> None: pass # E: Invalid type comment or annotation
 def f4(x: Iterable[x][x]) -> None: pass # E: Invalid type comment or annotation
 def f5(x: Callable[..., int][x]) -> None: pass # E: Invalid type comment or annotation
-def f6(x: Callable[..., int].x) -> None: pass # E: Invalid type comment or annotation
+def f6(x: Callable[..., int].x) -> None: pass  # E: Dot notation .x requires a Member or Param type, got def (*Any, **Any) -> int
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
 
 [case testFastParseTypeWithIgnore]
 def f(x,  # type: x  # type: ignore

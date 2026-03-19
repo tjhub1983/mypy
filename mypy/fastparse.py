@@ -2203,11 +2203,7 @@ class TypeConverter:
         elif isinstance(before_dot, UnboundType):
             # Subscripted type with attribute access: GetMember[T, K].type
             # Desugar to _TypeGetAttr[GetMember[T, K], Literal["attr"]]
-            attr_literal = UnboundType(
-                "Literal",
-                [RawExpressionType(n.attr, "builtins.str", line=self.line)],
-                line=self.line,
-            )
+            attr_literal = RawExpressionType(n.attr, "builtins.str", line=self.line)
             return UnboundType(
                 "__builtins__._TypeGetAttr",
                 [before_dot, attr_literal],
