@@ -314,10 +314,59 @@ asdf: NewProtocol[
 ]
 
 [file b.py]
+from a import MyProto, LinkedList
+from typing import NewProtocol, Member, Literal
+
+x: MyProto
+
+class Good:
+    x: int
+    y: str
+
+def takes_proto(p: MyProto) -> None:
+    pass
+
+takes_proto(Good())
+
+z: LinkedList[str]
+
+# A different NewProtocol that should be incompatible with MyProto
+type OtherProto = NewProtocol[
+    Member[Literal["bar"], int],
+]
+other: OtherProto
+x = other
 
 [file b.py.2]
+from a import MyProto, LinkedList
+from typing import NewProtocol, Member, Literal
+
+x: MyProto
+
+class Good:
+    x: int
+    y: str
+
+def takes_proto(p: MyProto) -> None:
+    pass
+
+takes_proto(Good())
+
+z: LinkedList[str]
+
+# A different NewProtocol that should be incompatible with MyProto
+type OtherProto = NewProtocol[
+    Member[Literal["bar"], int],
+]
+other: OtherProto
+x = other
 
 # dummy change
+
+[out]
+tmp/b.py:22: error: Incompatible types in assignment (expression has type "NewProtocol[bar: int]", variable has type "NewProtocol[x: int, y: str]")
+[out2]
+tmp/b.py:22: error: Incompatible types in assignment (expression has type "NewProtocol[bar: int]", variable has type "NewProtocol[x: int, y: str]")
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
