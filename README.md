@@ -39,6 +39,10 @@ For the original mypy README, see [REAL_README.md](REAL_README.md).
 - Any attempt to make it perform well
 - Fine-grained mode is currently broken
 
+## Known bugs
+
+- **`IsAssignable`/`IsEquivalent` over-accept on parameterized tuples.** Both operators ignore type arguments on `tuple` (and presumably other generics), so e.g. `IsAssignable[tuple[Literal[2], Literal[1]], tuple[Literal[2], ...]]` and `IsEquivalent[tuple[Literal[2], Literal[1]], tuple[Literal[2], Literal[2]]]` both return `Literal[True]`. On bare `Literal` values the operators work correctly. (Note: even if implemented correctly, these checks should always return `False` for a fixed-length tuple vs. a homogeneous tuple — neither current behavior is what's needed, so this is a doubly-bad primitive for "all elements equal" style checks. Use `Union[*xs]` collapse against a representative instead.)
+
 ## Key files
 
 - `mypy/typelevel.py` — All type operator evaluation logic
