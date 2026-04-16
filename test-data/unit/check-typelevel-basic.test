@@ -1384,3 +1384,33 @@ assert_type(result, tuple[tuple[int, float], tuple[str, bool]])
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
+
+[case testRecursiveConditionalAliasWithTypeVarTuples]
+# flags: --python-version 3.14
+# Regression test: same as above but with TypeVarTuples (*Ts, *Us).
+# RaiseError inside the Zip body must not fire during error formatting
+# when get_proper_type evaluates it standalone outside its _Cond context.
+from typing import Literal, Bool, IsAssignable, Slice, GetArg, Length, RaiseError, assert_type
+
+type DropLast[T] = Slice[T, Literal[0], Literal[-1]]
+type Last[T] = GetArg[T, tuple, Literal[-1]]
+type Empty[T] = IsAssignable[Length[T], Literal[0]]
+
+type Zip[T, S] = (
+    tuple[()]
+    if Bool[Empty[T]] and Bool[Empty[S]]
+    else RaiseError[Literal["Zip length mismatch"], T, S]
+    if Bool[Empty[T]] or Bool[Empty[S]]
+    else tuple[*Zip[DropLast[T], DropLast[S]], tuple[Last[T], Last[S]]]
+)
+
+def pair_zip[*Ts, *Us](
+    a: tuple[*Ts], b: tuple[*Us]
+) -> Zip[tuple[*Ts], tuple[*Us]]:
+    return tuple(zip(a, b))  # type: ignore
+
+result = pair_zip((1, "hello"), (3.14, True))
+assert_type(result, tuple[tuple[int, float], tuple[str, bool]])
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]

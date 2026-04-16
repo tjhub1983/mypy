@@ -71,6 +71,7 @@ from mypy.subtypes import (
     is_same_type,
     is_subtype,
 )
+from mypy.typelevel import typelevel_ctx
 from mypy.typeops import separate_union_literals
 from mypy.types import (
     AnyType,
@@ -2899,7 +2900,8 @@ def format_type_bare(
     instead.  (The caller may want to use quote_type_string after
     processing has happened, to maintain consistent quoting in messages.)
     """
-    return format_type_inner(typ, verbosity, options, find_type_overlaps(typ), module_names)
+    with typelevel_ctx.suppress_errors():
+        return format_type_inner(typ, verbosity, options, find_type_overlaps(typ), module_names)
 
 
 def format_type_distinctly(*types: Type, options: Options, bare: bool = False) -> tuple[str, ...]:
@@ -2914,6 +2916,11 @@ def format_type_distinctly(*types: Type, options: Options, bare: bool = False) -
     be quoted; callers who need to do post-processing of the strings before
     quoting them (such as prepending * or **) should use this.
     """
+    with typelevel_ctx.suppress_errors():
+        return _format_type_distinctly(*types, options=options, bare=bare)
+
+
+def _format_type_distinctly(*types: Type, options: Options, bare: bool = False) -> tuple[str, ...]:
     overlapping = find_type_overlaps(*types)
 
     def format_single(arg: Type) -> str:

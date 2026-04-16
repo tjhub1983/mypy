@@ -89,6 +89,7 @@ class TypeLevelContext:
         # XXX: but maybe we should always thread the evaluator back
         # ourselves or something instead?
         self._evaluator: TypeLevelEvaluator | None = None
+        self._suppress_errors: bool = False
 
     @property
     def api(self) -> SemanticAnalyzerInterface | None:
@@ -110,6 +111,20 @@ class TypeLevelContext:
             yield
         finally:
             self._api = saved
+
+    @contextmanager
+    def suppress_errors(self) -> Iterator[None]:
+        """Suppress side-effectful errors (e.g. from RaiseError) during evaluation.
+
+        Used during type formatting to prevent spurious errors when
+        get_proper_type evaluates TypeOperatorTypes for display purposes.
+        """
+        saved = self._suppress_errors
+        self._suppress_errors = True
+        try:
+            yield
+        finally:
+            self._suppress_errors = saved
 
 
 # Global context instance for type-level computation
@@ -1344,7 +1359,8 @@ def _eval_raise_error(*args: Type, evaluator: TypeLevelEvaluator) -> Type:
     # TODO: We could also print a stack trace?
     # Use serious=True to bypass in_checked_function() check which requires
     # self.options to be set on the SemanticAnalyzer
-    evaluator.api.fail(msg, evaluator.error_ctx, serious=True)
+    if not typelevel_ctx._suppress_errors:
+        evaluator.api.fail(msg, evaluator.error_ctx, serious=True)
 
     return UninhabitedType()
 
