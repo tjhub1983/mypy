@@ -531,9 +531,9 @@ reveal_type(a)  # N: Revealed type is "typing.Member[Literal['x'], builtins.int,
 b: GetMember[Foo, Literal['y']]
 reveal_type(b)  # N: Revealed type is "typing.Member[Literal['y'], builtins.str, Never, Never, __main__.Foo]"
 
-# Non-existent member returns Never
-c: GetMember[Foo, Literal['z']]
-reveal_type(c)  # N: Revealed type is "Never"
+# Non-existent member produces an error
+c: GetMember[Foo, Literal['z']]  # E: GetMember: 'z' not found in __main__.Foo
+reveal_type(c)  # N: Revealed type is "Any"
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
@@ -549,8 +549,8 @@ a: GetMember[TD, Literal['name']]
 reveal_type(a)  # N: Revealed type is "typing.Member[Literal['name'], builtins.str, Never, Never, Never]"
 b: GetMember[TD, Literal['age']]
 reveal_type(b)  # N: Revealed type is "typing.Member[Literal['age'], builtins.int, Never, Never, Never]"
-c: GetMember[TD, Literal['missing']]
-reveal_type(c)  # N: Revealed type is "Never"
+c: GetMember[TD, Literal['missing']]  # E: GetMember: 'missing' not found in TypedDict(__main__.TD, {'name': str, 'age': int})
+reveal_type(c)  # N: Revealed type is "Any"
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]

@@ -652,7 +652,7 @@ reveal_type(z)  # N: Revealed type is "builtins.str"
 [typing fixtures/typing-full.pyi]
 
 [case testTypeOperatorGetArgOutOfBounds]
-# Test GetArg with out-of-bounds indexes returns Never
+# Test GetArg with out-of-bounds indexes produces an error
 from typing import Generic, TypeVar, GetArg, Literal
 
 T = TypeVar('T')
@@ -662,25 +662,25 @@ class MyGeneric(Generic[T, U]):
     pass
 
 # Index too large
-x: GetArg[MyGeneric[int, str], MyGeneric, Literal[2]]
-reveal_type(x)  # N: Revealed type is "Never"
+x: GetArg[MyGeneric[int, str], MyGeneric, Literal[2]]  # E: GetArg: index out of range for __main__.MyGeneric[int, str] as __main__.MyGeneric[Any, Any]
+reveal_type(x)  # N: Revealed type is "Any"
 
-x2: GetArg[MyGeneric[int, str], MyGeneric, Literal[100]]
-reveal_type(x2)  # N: Revealed type is "Never"
+x2: GetArg[MyGeneric[int, str], MyGeneric, Literal[100]]  # E: GetArg: index out of range for __main__.MyGeneric[int, str] as __main__.MyGeneric[Any, Any]
+reveal_type(x2)  # N: Revealed type is "Any"
 
 # Negative index too small
-y: GetArg[MyGeneric[int, str], MyGeneric, Literal[-3]]
-reveal_type(y)  # N: Revealed type is "Never"
+y: GetArg[MyGeneric[int, str], MyGeneric, Literal[-3]]  # E: GetArg: index out of range for __main__.MyGeneric[int, str] as __main__.MyGeneric[Any, Any]
+reveal_type(y)  # N: Revealed type is "Any"
 
-y2: GetArg[MyGeneric[int, str], MyGeneric, Literal[-100]]
-reveal_type(y2)  # N: Revealed type is "Never"
+y2: GetArg[MyGeneric[int, str], MyGeneric, Literal[-100]]  # E: GetArg: index out of range for __main__.MyGeneric[int, str] as __main__.MyGeneric[Any, Any]
+reveal_type(y2)  # N: Revealed type is "Any"
 
 # Out of bounds on tuples
-z: GetArg[tuple[int, str], tuple, Literal[2]]
-reveal_type(z)  # N: Revealed type is "Never"
+z: GetArg[tuple[int, str], tuple, Literal[2]]  # E: GetArg: index out of range for tuple[int, str] as tuple[Any, ...]
+reveal_type(z)  # N: Revealed type is "Any"
 
-z2: GetArg[tuple[int, str], tuple, Literal[-3]]
-reveal_type(z2)  # N: Revealed type is "Never"
+z2: GetArg[tuple[int, str], tuple, Literal[-3]]  # E: GetArg: index out of range for tuple[int, str] as tuple[Any, ...]
+reveal_type(z2)  # N: Revealed type is "Any"
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]

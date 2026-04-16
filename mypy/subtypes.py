@@ -2308,10 +2308,16 @@ def infer_class_variances(info: TypeInfo) -> bool:
         return True
     tvs = info.defn.type_vars
     success = True
-    for i, tv in enumerate(tvs):
-        if isinstance(tv, TypeVarType) and tv.variance == VARIANCE_NOT_READY:
-            if not infer_variance(info, i):
-                success = False
+    # Variance inference substitutes type variables with synthetic bounds and
+    # runs subtype checks, which can trigger type-level operator evaluation on
+    # types the user never wrote. Suppress any errors from those evaluations.
+    from mypy.typelevel import typelevel_ctx
+
+    with typelevel_ctx.suppress_errors():
+        for i, tv in enumerate(tvs):
+            if isinstance(tv, TypeVarType) and tv.variance == VARIANCE_NOT_READY:
+                if not infer_variance(info, i):
+                    success = False
     return success
 
 

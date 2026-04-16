@@ -195,11 +195,15 @@ def lift_over_unions(func: OperatorFunc) -> OperatorFunc:
             proper = get_proper_type(arg)
             if isinstance(proper, UnionType):
                 expanded.append(list(proper.items))
+            elif isinstance(proper, UninhabitedType):
+                # Never decomposes to an empty union: the operator never runs.
+                expanded.append([])
             else:
                 expanded.append([arg])
 
         combinations = list(itertools.product(*expanded))
 
+        # Fast path: no unions to fan out over, just call the operator directly.
         if len(combinations) == 1:
             return func(*args, evaluator=evaluator)
 
@@ -220,6 +224,18 @@ class EvaluationStuck(Exception):
 
 class EvaluationOverflow(Exception):
     pass
+
+
+class TypeLevelError(Exception):
+    """Raised by an operator evaluator when its arguments are invalid.
+
+    Caught in eval_operator, which emits the message via api.fail and
+    returns UninhabitedType.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.message = message
 
 
 class TypeLevelEvaluator:
@@ -297,7 +313,12 @@ class TypeLevelEvaluator:
                 args = self.flatten_args(args)
             elif len(args) != info.expected_argc:
                 return UninhabitedType()
-            return info.func(*args, evaluator=self)
+            try:
+                return info.func(*args, evaluator=self)
+            except TypeLevelError as err:
+                if not typelevel_ctx._suppress_errors:
+                    self.api.fail(err.message, self.error_ctx, serious=True)
+                return AnyType(TypeOfAny.from_error)
         finally:
             self._current_op = old_op
 
@@ -643,10 +664,12 @@ def _eval_get_arg(
     target: Type, base: Type, index_arg: Type, *, evaluator: TypeLevelEvaluator
 ) -> Type:
     """Evaluate GetArg[T, Base, Idx] - get type argument at index from T as Base."""
-    args = _get_args(evaluator, target, base)
+    eval_target = evaluator.eval_proper(target)
+    eval_base = evaluator.eval_proper(base)
+    args = _get_args(evaluator, eval_target, eval_base)
 
     if args is None:
-        return UninhabitedType()
+        raise TypeLevelError(f"GetArg: {eval_target} is not a subclass of {eval_base}")
 
     # Extract index as int
     index = extract_literal_int(evaluator.eval_proper(index_arg))
@@ -658,17 +681,19 @@ def _eval_get_arg(
     if 0 <= index < len(args):
         return args[index]
 
-    return UninhabitedType()
+    raise TypeLevelError(f"GetArg: index out of range for {eval_target} as {eval_base}")
 
 
 @register_operator("GetArgs")
 @lift_over_unions
 def _eval_get_args(target: Type, base: Type, *, evaluator: TypeLevelEvaluator) -> Type:
     """Evaluate GetArgs[T, Base] -> tuple of all type args from T as Base."""
-    args = _get_args(evaluator, target, base)
+    eval_target = evaluator.eval_proper(target)
+    eval_base = evaluator.eval_proper(base)
+    args = _get_args(evaluator, eval_target, eval_base)
 
     if args is None:
-        return UninhabitedType()
+        raise TypeLevelError(f"GetArgs: {eval_target} is not a subclass of {eval_base}")
     return evaluator.tuple_type(list(args))
 
 
@@ -764,8 +789,12 @@ def _eval_get_member(target_arg: Type, name_arg: Type, *, evaluator: TypeLevelEv
     if name is None:
         return UninhabitedType()
 
-    members = _get_members_dict(target_arg, evaluator=evaluator, attrs_only=False)
-    return members.get(name, UninhabitedType())
+    eval_target = evaluator.eval_proper(target_arg)
+    members = _get_members_dict(eval_target, evaluator=evaluator, attrs_only=False)
+    member = members.get(name)
+    if member is None:
+        raise TypeLevelError(f"GetMember: {name!r} not found in {eval_target}")
+    return member
 
 
 @register_operator("GetMemberType")
@@ -852,7 +881,7 @@ def _eval_slice(
         sliced_items = target.items[start:end]
         return evaluator.tuple_type(sliced_items)
 
-    return UninhabitedType()
+    raise TypeLevelError(f"Slice: {target} is not a tuple or string Literal")
 
 
 @register_operator("Concat")
