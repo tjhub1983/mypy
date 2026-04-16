@@ -3958,7 +3958,13 @@ def _expand_type_fors_in_args(typ: ProperType) -> ProperType:
         typ = expand_type(typ2, {})
     elif isinstance(typ, UnpackType) and _could_be_computed_unpack(typ):
         # No need to expand here
-        typ = typ.copy_modified(type=get_proper_type(typ.type))
+        expanded = get_proper_type(typ.type)
+        # If expansion is stuck (still a ComputedType), keep the original.
+        # This prevents infinite expansion of recursive type aliases like
+        # Zip[DropLast[T], ...] where each expansion produces another
+        # stuck recursive reference.
+        if not isinstance(expanded, ComputedType):
+            typ = typ.copy_modified(type=expanded)
 
     return typ
 

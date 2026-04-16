@@ -1353,3 +1353,34 @@ reveal_type(c)  # N: Revealed type is "Literal['keyword']"
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
+
+[case testRecursiveConditionalAliasWithTypeVars]
+# flags: --python-version 3.14
+# Regression test: recursive conditional type alias with TypeVars
+# in a function return type must not hang when formatting error messages.
+# The bug was that _expand_type_fors_in_args would infinitely expand
+# recursive aliases inside UnpackType when the expansion was stuck
+# on TypeVars.
+from typing import Literal, Bool, IsAssignable, Slice, GetArg, Length, RaiseError, assert_type
+
+type DropLast[T] = Slice[T, Literal[0], Literal[-1]]
+type Last[T] = GetArg[T, tuple, Literal[-1]]
+type Empty[T] = IsAssignable[Length[T], Literal[0]]
+
+type Zip[T, S] = (
+    tuple[()]
+    if Bool[Empty[T]] and Bool[Empty[S]]
+    else RaiseError[Literal["Zip length mismatch"], T, S]
+    if Bool[Empty[T]] or Bool[Empty[S]]
+    else tuple[*Zip[DropLast[T], DropLast[S]], tuple[Last[T], Last[S]]]
+)
+
+def pair_zip[T, U](a: T, b: U) -> Zip[T, U]:
+    return tuple(zip(a, b))  # type: ignore
+
+# Concrete usage should work
+result = pair_zip((1, "hello"), (3.14, True))
+assert_type(result, tuple[tuple[int, float], tuple[str, bool]])
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
