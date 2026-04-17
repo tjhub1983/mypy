@@ -2292,6 +2292,7 @@ class TypeConverter:
         tfc = self._comprehension_to_type(n.args[0])
         if not isinstance(tfc, TypeForComprehension):
             return tfc
+        tfc.is_map = True
         value = self.visit(n.func)
         if not isinstance(value, UnboundType) or value.args:
             return self.invalid_type(n)

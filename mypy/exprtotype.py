@@ -263,6 +263,7 @@ def expr_to_unanalyzed_type(
         tfc = _generator_to_type_for_comprehension(
             gen, options, allow_new_syntax, lookup_qualified, expr.line, expr.column
         )
+        tfc.is_map = True
         base.args = (tfc,)
         return base
     elif isinstance(expr, CallExpr) and isinstance(_parent, ListExpr):
@@ -397,6 +398,7 @@ def expr_to_unanalyzed_type(
             tfc = _generator_to_type_for_comprehension(
                 gen, options, allow_new_syntax, lookup_qualified, expr.expr.line, expr.expr.column
             )
+            tfc.is_map = True
             inner_base.args = (tfc,)
             return inner_base
         return UnpackType(

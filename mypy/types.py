@@ -601,7 +601,7 @@ class TypeForComprehension(ComputedType):
     Expands to a tuple of types.
     """
 
-    __slots__ = ("element_expr", "iter_name", "iter_type", "conditions", "iter_var")
+    __slots__ = ("element_expr", "iter_name", "iter_type", "conditions", "iter_var", "is_map")
 
     def __init__(
         self,
@@ -612,6 +612,8 @@ class TypeForComprehension(ComputedType):
         iter_var: TypeVarType | None = None,  # Typically populated by typeanal
         line: int = -1,
         column: int = -1,
+        *,
+        is_map: bool = False,
     ) -> None:
         super().__init__(line, column)
         self.element_expr = element_expr
@@ -619,6 +621,10 @@ class TypeForComprehension(ComputedType):
         self.iter_type = iter_type
         self.conditions = conditions
         self.iter_var: TypeVarType | None = iter_var
+        # True when this comprehension was desugared from `Map[...]` syntax.
+        # Changes behavior at the Map boundary: Iter[Any] propagates as Any
+        # through the enclosing variadic context instead of erroring.
+        self.is_map = is_map
 
     def type_param(self) -> mypy.nodes.TypeParam:
         return mypy.nodes.TypeParam(self.iter_name, mypy.nodes.TYPE_VAR_KIND, None, [], None)
@@ -627,7 +633,15 @@ class TypeForComprehension(ComputedType):
         return visitor.visit_type_for_comprehension(self)
 
     def __hash__(self) -> int:
-        return hash((self.element_expr, self.iter_name, self.iter_type, tuple(self.conditions)))
+        return hash(
+            (
+                self.element_expr,
+                self.iter_name,
+                self.iter_type,
+                tuple(self.conditions),
+                self.is_map,
+            )
+        )
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, TypeForComprehension):
@@ -637,6 +651,7 @@ class TypeForComprehension(ComputedType):
             and self.iter_name == other.iter_name
             and self.iter_type == other.iter_type
             and self.conditions == other.conditions
+            and self.is_map == other.is_map
         )
 
     def __repr__(self) -> str:
@@ -651,6 +666,7 @@ class TypeForComprehension(ComputedType):
             "iter_type": self.iter_type.serialize(),
             "conditions": [c.serialize() for c in self.conditions],
             "iter_var": self.iter_var.serialize() if self.iter_var else None,
+            "is_map": self.is_map,
         }
 
     @classmethod
@@ -663,6 +679,7 @@ class TypeForComprehension(ComputedType):
             deserialize_type(data["iter_type"]),
             [deserialize_type(c) for c in data["conditions"]],
             iter_var=cast(TypeVarType, deserialize_type(var)) if var else None,
+            is_map=data.get("is_map", False),
         )
 
     def copy_modified(
@@ -673,6 +690,7 @@ class TypeForComprehension(ComputedType):
         iter_type: Type | None = None,
         conditions: list[Type] | None = None,
         iter_var: TypeVarType | None = None,  # Typically populated by typeanal
+        is_map: bool | None = None,
     ) -> TypeForComprehension:
         return TypeForComprehension(
             element_expr if element_expr is not None else self.element_expr,
@@ -682,6 +700,7 @@ class TypeForComprehension(ComputedType):
             iter_var if iter_var is not None else self.iter_var,
             self.line,
             self.column,
+            is_map=is_map if is_map is not None else self.is_map,
         )
 
     def write(self, data: WriteBuffer) -> None:
@@ -693,6 +712,7 @@ class TypeForComprehension(ComputedType):
         for cond in self.conditions:
             cond.write(data)
         write_type_opt(data, self.iter_var)
+        write_bool(data, self.is_map)
         write_tag(data, END_TAG)
 
     @classmethod
@@ -703,9 +723,12 @@ class TypeForComprehension(ComputedType):
         num_conditions = read_int(data)
         conditions = [read_type(data) for _ in range(num_conditions)]
         iter_var = cast(TypeVarType | None, read_type_opt(data))
+        is_map = read_bool(data)
 
         assert read_tag(data) == END_TAG
-        return TypeForComprehension(element_expr, iter_name, iter_type, conditions, iter_var)
+        return TypeForComprehension(
+            element_expr, iter_name, iter_type, conditions, iter_var, is_map=is_map
+        )
 
 
 class TypeGuardedType(Type):
@@ -3930,6 +3953,23 @@ def _could_be_computed_unpack(t: Type) -> bool:
     )
 
 
+def _find_map_any(items: Iterable[Type]) -> AnyType | None:
+    """Return the AnyType payload from the first *Map[...]-over-Any sentinel in items.
+
+    The sentinel is an UnpackType wrapping an AnyType, produced by
+    evaluate_comprehension on a Map-flavored TypeForComprehension whose
+    Iter[...] source is Any. The enclosing variadic container should
+    collapse to AnyType when it sees one.
+    """
+    for item in items:
+        if not isinstance(item, UnpackType):
+            continue
+        inner = get_proper_type(item.type)
+        if isinstance(inner, AnyType):
+            return inner
+    return None
+
+
 def _expand_type_fors_in_args(typ: ProperType) -> ProperType:
     """
     Expand any TypeForComprehensions in type arguments.
@@ -3948,6 +3988,10 @@ def _expand_type_fors_in_args(typ: ProperType) -> ProperType:
         # expanding the types might produce Unpacks, which we use
         # expand_type to substitute in.
         typ = expand_type(typ2, {})
+        if isinstance(typ, TupleType):
+            if (map_any := _find_map_any(typ.items)) is not None:
+                # A *Map[...] over Iter[Any] landed here; propagate Any through the tuple.
+                return map_any
     elif (
         isinstance(typ, Instance)
         and typ.type  # Make sure it's not a FakeInfo
@@ -3956,6 +4000,9 @@ def _expand_type_fors_in_args(typ: ProperType) -> ProperType:
     ):
         typ2 = typ.copy_modified(args=[get_proper_type(st) for st in typ.args])
         typ = expand_type(typ2, {})
+        if isinstance(typ, Instance):
+            if (map_any := _find_map_any(typ.args)) is not None:
+                return map_any
     elif isinstance(typ, UnpackType) and _could_be_computed_unpack(typ):
         # No need to expand here
         expanded = get_proper_type(typ.type)

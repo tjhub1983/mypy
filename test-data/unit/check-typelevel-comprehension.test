@@ -232,3 +232,66 @@ f(Impl())
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
+
+[case testMapOverIterAnyInTuple]
+# *Map(...) over Iter[Any] collapses the enclosing tuple to Any.
+# The *[...] form is unchanged (Iter[Any] still errors / produces tuple[Never]).
+from typing import Iter, Map, Any
+
+x: tuple[*Map(list[T] for T in Iter[Any])]
+reveal_type(x)  # N: Revealed type is "Any"
+
+y: tuple[*[list[T] for T in Iter[Any]]]
+reveal_type(y)  # N: Revealed type is "tuple[Never]"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testMapOverIterAnyInUnion]
+# *Map(...) over Iter[Any] collapses the enclosing Union to Any.
+from typing import Iter, Map, Union, Any
+
+x: Union[*Map(list[T] for T in Iter[Any])]
+reveal_type(x)  # N: Revealed type is "Any"
+
+y: Union[*[list[T] for T in Iter[Any]]]
+reveal_type(y)  # N: Revealed type is "Never"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testMapOverIterAnyInNewProtocol]
+# *Map(...) over Iter[Any] collapses the enclosing NewProtocol to Any:
+# any value satisfies the resulting protocol without error.
+from typing import Iter, Map, NewProtocol, Member, Literal, Any
+
+P = NewProtocol[*Map(Member[Literal['x'], T] for T in Iter[Any])]
+
+def f(p: P) -> None: ...
+
+class Impl: ...
+
+f(Impl())  # P collapsed to Any, so this is fine
+f(42)
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]
+
+[case testMapOverIterAnyInTypeAlias]
+# flags: --python-version 3.12
+# The Map-over-Any collapse flows through a PEP 695 alias.
+from typing import Iter, Map, Any
+
+type MapList[X] = tuple[*Map(list[T] for T in Iter[X])]
+
+# When X = Any the comprehension source is Iter[Any]; Map collapses to Any.
+x: MapList[Any]
+reveal_type(x)  # N: Revealed type is "Any"
+
+# Non-Map form keeps prior behavior: Iter[Any] does not collapse.
+type StarList[X] = tuple[*[list[T] for T in Iter[X]]]
+y: StarList[Any]
+reveal_type(y)  # N: Revealed type is "tuple[Never]"
+
+[builtins fixtures/typelevel.pyi]
+[typing fixtures/typing-full.pyi]

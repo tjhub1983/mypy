@@ -151,6 +151,21 @@ EXPANSION_ANY = AnyType(TypeOfAny.expansion_stuck)
 EXPANSION_OVERFLOW = AnyType(TypeOfAny.from_error)
 
 
+def find_map_any_in_args(args: list[Type]) -> AnyType | None:
+    """Return the inner AnyType if any arg is an UnpackType(AnyType) sentinel.
+
+    This sentinel is produced by evaluating a *Map[...] comprehension whose
+    Iter[...] source is Any; enclosing variadic operators / containers use
+    its presence to collapse themselves to Any.
+    """
+    for arg in args:
+        if isinstance(arg, UnpackType):
+            inner = get_proper_type(arg.type)
+            if isinstance(inner, AnyType):
+                return inner
+    return None
+
+
 def register_operator(name: str) -> Callable[[OperatorFunc], OperatorFunc]:
     """Decorator to register an operator evaluator.
 
@@ -311,6 +326,10 @@ class TypeLevelEvaluator:
             args = typ.args
             if info.expected_argc is None:
                 args = self.flatten_args(args)
+                # If a *Map[...]-over-Any sentinel landed in the flattened args,
+                # collapse the whole variadic operator call to Any.
+                if (map_any := find_map_any_in_args(args)) is not None:
+                    return map_any
             elif len(args) != info.expected_argc:
                 return UninhabitedType()
             try:
@@ -336,6 +355,8 @@ class TypeLevelEvaluator:
         """Flatten type arguments, evaluating and unpacking as needed.
 
         Handles UnpackType from comprehensions by expanding the inner TupleType.
+        An UnpackType(AnyType) sentinel (produced by *Map[...] over Iter[Any])
+        is passed through for the caller to detect via find_map_any_in_args.
         """
         flat_args: list[Type] = []
         for arg in args:
@@ -470,6 +491,10 @@ def _eval_iter(arg: Type, *, evaluator: TypeLevelEvaluator) -> Type:
     """Evaluate a type-level iterator (Iter[T])."""
     target = evaluator.eval_proper(arg)
     if isinstance(target, TupleType):
+        return target
+    elif isinstance(target, AnyType):
+        # Propagate Any so enclosing operators (notably Map) can detect it
+        # and short-circuit at the Any boundary.
         return target
     else:
         return UninhabitedType()
@@ -1413,6 +1438,11 @@ def evaluate_comprehension(evaluator: TypeLevelEvaluator, typ: TypeForComprehens
 
     # Get the iterable type and expand it to a TupleType
     iter_proper = evaluator.eval_proper(typ.iter_type)
+
+    if isinstance(iter_proper, AnyType) and typ.is_map:
+        # Map-over-Any: propagate Any as an UnpackType(AnyType) sentinel
+        # that the enclosing variadic container collapses to Any.
+        return UnpackType(AnyType(TypeOfAny.from_another_any, source_any=iter_proper))
 
     if not isinstance(iter_proper, TupleType):
         # Can only iterate over tuple types
