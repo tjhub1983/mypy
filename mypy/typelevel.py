@@ -1444,8 +1444,17 @@ def evaluate_comprehension(evaluator: TypeLevelEvaluator, typ: TypeForComprehens
         # that the enclosing variadic container collapses to Any.
         return UnpackType(AnyType(TypeOfAny.from_another_any, source_any=iter_proper))
 
+    if isinstance(iter_proper, AnyType) and not typ.is_map:
+        if iter_proper.type_of_any == TypeOfAny.explicit and not typelevel_ctx._suppress_errors:
+            evaluator.api.fail(
+                "Type comprehension requires Iter over a tuple type, got Any;"
+                " use Map(...) to propagate Any",
+                evaluator.error_ctx,
+                serious=True,
+            )
+        return AnyType(TypeOfAny.from_error)
+
     if not isinstance(iter_proper, TupleType):
-        # Can only iterate over tuple types
         return UninhabitedType()
 
     # Process each item in the tuple

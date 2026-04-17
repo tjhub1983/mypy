@@ -235,14 +235,14 @@ f(Impl())
 
 [case testMapOverIterAnyInTuple]
 # *Map(...) over Iter[Any] collapses the enclosing tuple to Any.
-# The *[...] form is unchanged (Iter[Any] still errors / produces tuple[Never]).
+# The *[...] form errors because Iter[Any] is not a tuple type.
 from typing import Iter, Map, Any
 
 x: tuple[*Map(list[T] for T in Iter[Any])]
 reveal_type(x)  # N: Revealed type is "Any"
 
-y: tuple[*[list[T] for T in Iter[Any]]]
-reveal_type(y)  # N: Revealed type is "tuple[Never]"
+y: tuple[*[list[T] for T in Iter[Any]]]  # E: Type comprehension requires Iter over a tuple type, got Any; use Map(...) to propagate Any
+reveal_type(y)  # N: Revealed type is "tuple[Any]"
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
@@ -254,8 +254,8 @@ from typing import Iter, Map, Union, Any
 x: Union[*Map(list[T] for T in Iter[Any])]
 reveal_type(x)  # N: Revealed type is "Any"
 
-y: Union[*[list[T] for T in Iter[Any]]]
-reveal_type(y)  # N: Revealed type is "Never"
+y: Union[*[list[T] for T in Iter[Any]]]  # E: Type comprehension requires Iter over a tuple type, got Any; use Map(...) to propagate Any
+reveal_type(y)  # N: Revealed type is "Any"
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
@@ -289,9 +289,9 @@ x: MapList[Any]
 reveal_type(x)  # N: Revealed type is "Any"
 
 # Non-Map form keeps prior behavior: Iter[Any] does not collapse.
-type StarList[X] = tuple[*[list[T] for T in Iter[X]]]
+type StarList[X] = tuple[*[list[T] for T in Iter[X]]]  # E: Type comprehension requires Iter over a tuple type, got Any; use Map(...) to propagate Any
 y: StarList[Any]
-reveal_type(y)  # N: Revealed type is "tuple[Never]"
+reveal_type(y)  # N: Revealed type is "tuple[Any]"
 
 [builtins fixtures/typelevel.pyi]
 [typing fixtures/typing-full.pyi]
