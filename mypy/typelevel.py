@@ -666,6 +666,8 @@ def _eval_get_arg(
     """Evaluate GetArg[T, Base, Idx] - get type argument at index from T as Base."""
     eval_target = evaluator.eval_proper(target)
     eval_base = evaluator.eval_proper(base)
+    if isinstance(eval_target, AnyType):
+        return eval_target
     args = _get_args(evaluator, eval_target, eval_base)
 
     if args is None:
@@ -690,6 +692,8 @@ def _eval_get_args(target: Type, base: Type, *, evaluator: TypeLevelEvaluator) -
     """Evaluate GetArgs[T, Base] -> tuple of all type args from T as Base."""
     eval_target = evaluator.eval_proper(target)
     eval_base = evaluator.eval_proper(base)
+    if isinstance(eval_target, AnyType):
+        return eval_target
     args = _get_args(evaluator, eval_target, eval_base)
 
     if args is None:
@@ -790,6 +794,8 @@ def _eval_get_member(target_arg: Type, name_arg: Type, *, evaluator: TypeLevelEv
         return UninhabitedType()
 
     eval_target = evaluator.eval_proper(target_arg)
+    if isinstance(eval_target, AnyType):
+        return eval_target
     members = _get_members_dict(eval_target, evaluator=evaluator, attrs_only=False)
     member = members.get(name)
     if member is None:
@@ -807,7 +813,10 @@ def _eval_get_member_type(
     if name is None:
         return UninhabitedType()
 
-    members = _get_members_dict(target_arg, evaluator=evaluator, attrs_only=False)
+    eval_target = evaluator.eval_proper(target_arg)
+    if isinstance(eval_target, AnyType):
+        return eval_target
+    members = _get_members_dict(eval_target, evaluator=evaluator, attrs_only=False)
     member = members.get(name)
     if member is not None:
         # Extract the type argument (index 1) from Member[name, typ, quals, init, definer]
@@ -851,6 +860,8 @@ def _eval_slice(
 ) -> Type:
     """Evaluate Slice[S, Start, End] - slice a literal string or tuple type."""
     target = evaluator.eval_proper(target_arg)
+    if isinstance(target, AnyType):
+        return target
 
     # Handle start - can be int or None
     start_type = evaluator.eval_proper(start_arg)
