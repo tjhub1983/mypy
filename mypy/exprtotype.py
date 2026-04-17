@@ -17,6 +17,7 @@ from mypy.nodes import (
     EllipsisExpr,
     Expression,
     FloatExpr,
+    GeneratorExpr,
     IndexExpr,
     IntExpr,
     ListComprehension,
@@ -54,6 +55,64 @@ from mypy.types import (
 
 class TypeTranslationError(Exception):
     """Exception raised when an expression is not valid as a type."""
+
+
+def _is_map_name(name: str) -> bool:
+    """Return True if name syntactically refers to the Map type operator."""
+    return name == "Map" or name.endswith(".Map")
+
+
+def _is_map_call(expr: CallExpr) -> bool:
+    """Return True if expr is Map(<single comprehension>) — call syntax."""
+    if len(expr.args) != 1 or expr.arg_names != [None]:
+        return False
+    if not isinstance(expr.args[0], (GeneratorExpr, ListComprehension)):
+        return False
+    callee = expr.callee
+    if isinstance(callee, NameExpr):
+        return _is_map_name(callee.name)
+    if isinstance(callee, MemberExpr):
+        return callee.name == "Map"
+    return False
+
+
+def _generator_to_type_for_comprehension(
+    gen: GeneratorExpr,
+    options: Options,
+    allow_new_syntax: bool,
+    lookup_qualified: Callable[[str, Context], SymbolTableNode | None] | None,
+    line: int,
+    column: int,
+) -> TypeForComprehension:
+    """Build a TypeForComprehension from a GeneratorExpr (single for-clause).
+
+    Raises TypeTranslationError if the generator expression isn't a supported
+    form (multiple generators or non-name target).
+    """
+    if len(gen.sequences) != 1:
+        raise TypeTranslationError()
+    index = gen.indices[0]
+    if not isinstance(index, NameExpr):
+        raise TypeTranslationError()
+    iter_name = index.name
+    element_expr = expr_to_unanalyzed_type(
+        gen.left_expr, options, allow_new_syntax, lookup_qualified=lookup_qualified
+    )
+    iter_type = expr_to_unanalyzed_type(
+        gen.sequences[0], options, allow_new_syntax, lookup_qualified=lookup_qualified
+    )
+    conditions: list[Type] = [
+        expr_to_unanalyzed_type(cond, options, allow_new_syntax, lookup_qualified=lookup_qualified)
+        for cond in gen.condlists[0]
+    ]
+    return TypeForComprehension(
+        element_expr=element_expr,
+        iter_name=iter_name,
+        iter_type=iter_type,
+        conditions=conditions,
+        line=line,
+        column=column,
+    )
 
 
 def _extract_argument_name(expr: Expression) -> str | None:
@@ -192,6 +251,20 @@ def expr_to_unanalyzed_type(
             line=expr.line,
             column=expr.column,
         )
+    elif isinstance(expr, CallExpr) and _is_map_call(expr):
+        # Map(genexp) — variadic comprehension operator (call syntax).
+        base = expr_to_unanalyzed_type(
+            expr.callee, options, allow_new_syntax, expr, lookup_qualified=lookup_qualified
+        )
+        assert isinstance(base, UnboundType) and not base.args
+        arg = expr.args[0]
+        assert isinstance(arg, (GeneratorExpr, ListComprehension))
+        gen = arg if isinstance(arg, GeneratorExpr) else arg.generator
+        tfc = _generator_to_type_for_comprehension(
+            gen, options, allow_new_syntax, lookup_qualified, expr.line, expr.column
+        )
+        base.args = (tfc,)
+        return base
     elif isinstance(expr, CallExpr) and isinstance(_parent, ListExpr):
         c = expr.callee
         names = []
@@ -297,35 +370,35 @@ def expr_to_unanalyzed_type(
     elif allow_unpack and isinstance(expr, StarExpr):
         # Check if this is a type comprehension: *[Expr for var in Iter if Cond]
         if isinstance(expr.expr, ListComprehension):
-            gen = expr.expr.generator
-            # Only support single generator
-            if len(gen.sequences) != 1:
-                raise TypeTranslationError()
-            # The index should be a simple name
-            index = gen.indices[0]
-            if not isinstance(index, NameExpr):
-                raise TypeTranslationError()
-            iter_name = index.name
-            element_expr = expr_to_unanalyzed_type(
-                gen.left_expr, options, allow_new_syntax, lookup_qualified=lookup_qualified
+            return _generator_to_type_for_comprehension(
+                expr.expr.generator,
+                options,
+                allow_new_syntax,
+                lookup_qualified,
+                expr.line,
+                expr.column,
             )
-            iter_type = expr_to_unanalyzed_type(
-                gen.sequences[0], options, allow_new_syntax, lookup_qualified=lookup_qualified
+        # *Map(genexp) — keep the Map wrapper around the TFC (not an
+        # UnpackType). typeanal will verify the name resolves to Map and
+        # desugar to the analyzed TFC; the TFC then participates in variadic
+        # flattening just like the *[...] form.
+        if isinstance(expr.expr, CallExpr) and _is_map_call(expr.expr):
+            inner_base = expr_to_unanalyzed_type(
+                expr.expr.callee,
+                options,
+                allow_new_syntax,
+                expr.expr,
+                lookup_qualified=lookup_qualified,
             )
-            conditions: list[Type] = [
-                expr_to_unanalyzed_type(
-                    cond, options, allow_new_syntax, lookup_qualified=lookup_qualified
-                )
-                for cond in gen.condlists[0]
-            ]
-            return TypeForComprehension(
-                element_expr=element_expr,
-                iter_name=iter_name,
-                iter_type=iter_type,
-                conditions=conditions,
-                line=expr.line,
-                column=expr.column,
+            assert isinstance(inner_base, UnboundType) and not inner_base.args
+            arg = expr.expr.args[0]
+            assert isinstance(arg, (GeneratorExpr, ListComprehension))
+            gen = arg if isinstance(arg, GeneratorExpr) else arg.generator
+            tfc = _generator_to_type_for_comprehension(
+                gen, options, allow_new_syntax, lookup_qualified, expr.expr.line, expr.expr.column
             )
+            inner_base.args = (tfc,)
+            return inner_base
         return UnpackType(
             expr_to_unanalyzed_type(
                 expr.expr, options, allow_new_syntax, lookup_qualified=lookup_qualified

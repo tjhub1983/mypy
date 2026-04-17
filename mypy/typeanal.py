@@ -1184,6 +1184,22 @@ class TypeAnalyser(SyntheticTypeVisitor[Type], TypeAnalyzerPluginInterface):
             allow_unpack=True,
         )
 
+        # Map(comprehension) is a pure synonym for *[comprehension]: once
+        # we've confirmed the name really resolves to the Map type operator,
+        # unwrap it and return the TypeForComprehension directly. Using the
+        # TFC (not a TypeOperatorType wrapper) matches the *[...] path and
+        # avoids eager evaluation that would pre-substitute TypeVarTuples.
+        if type_info.fullname in ("_typeshed.typemap.Map", "typing.Map"):
+            if len(an_args) == 1 and isinstance(an_args[0], TypeForComprehension):
+                return an_args[0]
+            self.fail(
+                "Map(...) requires a single comprehension argument, "
+                "e.g. Map(T for T in Iter[...])",
+                t,
+                code=codes.VALID_TYPE,
+            )
+            return AnyType(TypeOfAny.from_error)
+
         # For _TypeGetAttr, eagerly check that the first arg is a type that
         # supports dot notation. If it's already a concrete type like
         # tuple[int, str] or a Callable, we can report the error now rather

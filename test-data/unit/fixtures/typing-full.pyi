@@ -247,6 +247,9 @@ _Ts = TypeVarTuple("_Ts")
 class Iter(Generic[T]): ...
 
 @_type_operator
+class Map(Generic[T]): ...
+
+@_type_operator
 class IsAssignable(Generic[T, U]): ...
 
 @_type_operator

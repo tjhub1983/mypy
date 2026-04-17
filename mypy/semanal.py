@@ -6273,6 +6273,11 @@ class SemanticAnalyzer(
             and not base.node.is_generic()
         ):
             expr.index.accept(self)
+        elif isinstance(expr.index, (GeneratorExpr, ListComprehension)):
+            # Foo[<comprehension>] is a type-level comprehension; leave
+            # conversion to expr_to_unanalyzed_type. Just do normal semantic
+            # analysis for name resolution here.
+            expr.index.accept(self)
         elif (
             isinstance(base, RefExpr) and isinstance(base.node, TypeAlias)
         ) or refers_to_class_or_function(base):

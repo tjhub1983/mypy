@@ -1955,6 +1955,16 @@ class TypeConverter:
         return [self.visit(e) for e in l]
 
     def visit_Call(self, e: Call) -> Type:
+        # Map(genexp) — variadic comprehension operator (call syntax allows
+        # a bare generator expression without extra parentheses).
+        if (
+            len(e.args) == 1
+            and not e.keywords
+            and isinstance(e.args[0], (ast3.GeneratorExp, ast3.ListComp))
+            and self._is_map_name_ast(e.func)
+        ):
+            return self._build_map_from_call(e)
+
         # Parse the arg constructor
         f = e.func
         constructor = stringify_name(f)
@@ -2219,10 +2229,24 @@ class TypeConverter:
         # Check if this is a list comprehension (type comprehension syntax)
         if isinstance(n.value, ast3.ListComp):
             return self.visit_ListComp_as_type(n.value)
+        # *Map(genexp) — pure synonym for *[...]. Produce the TFC directly
+        # (matching the *[...] path) rather than wrapping in UnpackType.
+        if (
+            isinstance(n.value, ast3.Call)
+            and len(n.value.args) == 1
+            and not n.value.keywords
+            and isinstance(n.value.args[0], (ast3.GeneratorExp, ast3.ListComp))
+            and self._is_map_name_ast(n.value.func)
+        ):
+            return self._build_map_from_call(n.value)
         return UnpackType(self.visit(n.value), from_star_syntax=True)
 
     def visit_ListComp_as_type(self, n: ast3.ListComp) -> Type:
         """Convert *[Expr for var in Iter if Cond] to TypeForComprehension."""
+        return self._comprehension_to_type(n)
+
+    def _comprehension_to_type(self, n: ast3.ListComp | ast3.GeneratorExp) -> Type:
+        """Build a TypeForComprehension from a list or generator comprehension AST."""
         # Currently only support single generator
         if len(n.generators) != 1:
             return self.invalid_type(
@@ -2248,6 +2272,35 @@ class TypeConverter:
             line=self.line,
             column=self.convert_column(n.col_offset),
         )
+
+    def _is_map_name_ast(self, node: ast3.AST) -> bool:
+        """Return True if node syntactically names the Map type operator."""
+        if isinstance(node, ast3.Name):
+            return node.id == "Map"
+        if isinstance(node, ast3.Attribute):
+            return node.attr == "Map"
+        return False
+
+    def _build_map_from_call(self, n: ast3.Call) -> Type:
+        """Convert Map(<comprehension>) to UnboundType(<name>, [TypeForComprehension]).
+
+        The Map wrapper is retained so typeanal can verify that the name
+        actually resolves to the Map type operator before desugaring to the
+        TFC. A user class coincidentally named Map will fail resolution there.
+        """
+        assert len(n.args) == 1 and isinstance(n.args[0], (ast3.GeneratorExp, ast3.ListComp))
+        tfc = self._comprehension_to_type(n.args[0])
+        if not isinstance(tfc, TypeForComprehension):
+            return tfc
+        value = self.visit(n.func)
+        if not isinstance(value, UnboundType) or value.args:
+            return self.invalid_type(n)
+        result = UnboundType(
+            value.name, [tfc], line=self.line, column=self.convert_column(n.col_offset)
+        )
+        result.end_column = n.end_col_offset
+        result.end_line = n.end_lineno
+        return result
 
     # List(expr* elts, expr_context ctx)
     def visit_List(self, n: ast3.List) -> Type:

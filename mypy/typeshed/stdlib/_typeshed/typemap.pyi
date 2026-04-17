@@ -273,6 +273,17 @@ class Iter(Generic[_T]):
 
     ...
 
+@_type_operator
+class Map(Generic[_T]):
+    """
+    Variadic type comprehension.
+    `*Map[(Expr for v in Iter[T] if Cond)]` expands in a variadic context
+    to the tuple of element types produced by the comprehension, equivalent
+    to `*[Expr for v in Iter[T] if Cond]`.
+    """
+
+    ...
+
 # --- String Operations ---
 
 @_type_operator
