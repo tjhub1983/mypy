@@ -1934,6 +1934,15 @@ class ExpressionChecker(ExpressionVisitor[Type], ExpressionCheckerSharedApi):
         # We support Type of namedtuples but not of tuples in general
         if isinstance(item, TupleType) and tuple_fallback(item).type.fullname != "builtins.tuple":
             return self.analyze_type_type_callee(tuple_fallback(item), context)
+        if isinstance(item, NoneType):
+            # type(None)() and NoneType() are valid in Python 3
+            return CallableType(
+                arg_types=[],
+                arg_kinds=[],
+                arg_names=[],
+                ret_type=item,
+                fallback=None,
+            )
         if isinstance(item, TypedDictType):
             return self.typeddict_callable_from_context(item)
 
