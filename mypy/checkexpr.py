@@ -1937,11 +1937,7 @@ class ExpressionChecker(ExpressionVisitor[Type], ExpressionCheckerSharedApi):
         if isinstance(item, NoneType):
             # type(None)() and NoneType() are valid in Python 3
             return CallableType(
-                arg_types=[],
-                arg_kinds=[],
-                arg_names=[],
-                ret_type=item,
-                fallback=None,
+                arg_types=[], arg_kinds=[], arg_names=[], ret_type=item, fallback=None
             )
         if isinstance(item, TypedDictType):
             return self.typeddict_callable_from_context(item)
